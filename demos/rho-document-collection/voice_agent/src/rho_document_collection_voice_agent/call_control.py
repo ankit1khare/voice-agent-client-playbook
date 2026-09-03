@@ -6,7 +6,7 @@ from livekit.agents import RunContext, function_tool, get_job_context
 from livekit.agents.llm import ToolFlag, Toolset
 from livekit.agents.voice.events import CloseEvent
 
-FINAL_GOODBYE = "Thanks for calling Rho. Goodbye."
+FINAL_GOODBYE = "Thank you, and have a great day!"
 GOODBYE_DISCONNECT_GRACE_SECONDS = 1.0
 
 END_CALL_DESCRIPTION = """
@@ -26,35 +26,26 @@ class GracefulEndCallTool(Toolset):
 
     def __init__(self) -> None:
         super().__init__(id="end_call")
-        self._shutdown_task: asyncio.Task[None] | None = None
 
     @function_tool(
         name="end_call",
         description=END_CALL_DESCRIPTION,
         flags=ToolFlag.IGNORE_ON_ENTER,
     )
-    async def end_call(self, ctx: RunContext) -> str:
+    async def end_call(self, ctx: RunContext) -> None:
         """Speak the final goodbye, allow carrier playout, then end the call."""
+        await self._speak_goodbye_and_shutdown(ctx)
+
+    async def _speak_goodbye_and_shutdown(self, ctx: RunContext) -> None:
         ctx.disallow_interruptions()
-        ctx.speech_handle.add_done_callback(
-            lambda _: self._schedule_delayed_shutdown(ctx)
-        )
         ctx.session.once("close", self._on_session_close)
-        return f'Say exactly "{FINAL_GOODBYE}" and nothing else.'
-
-    def _schedule_delayed_shutdown(self, ctx: RunContext) -> None:
-        if self._shutdown_task is None:
-            self._shutdown_task = asyncio.create_task(self._shutdown_after_grace(ctx))
-
-    async def _shutdown_after_grace(self, ctx: RunContext) -> None:
+        await ctx.wait_for_playout()
+        goodbye = ctx.session.say(FINAL_GOODBYE, allow_interruptions=False)
+        await goodbye.wait_for_playout()
         await asyncio.sleep(GOODBYE_DISCONNECT_GRACE_SECONDS)
         ctx.session.shutdown()
 
     def _on_session_close(self, ev: CloseEvent) -> None:
-        if self._shutdown_task is not None:
-            self._shutdown_task.cancel()
-            self._shutdown_task = None
-
         job_ctx = get_job_context()
 
         async def delete_call_room() -> None:

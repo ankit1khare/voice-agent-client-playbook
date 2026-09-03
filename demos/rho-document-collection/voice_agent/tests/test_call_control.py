@@ -12,29 +12,61 @@ from rho_document_collection_voice_agent.call_control import (
 )
 
 
+class FakeSpeechHandle:
+    def __init__(self, events: list[str]) -> None:
+        self.events = events
+
+    async def wait_for_playout(self) -> None:
+        self.events.append("goodbye_played")
+
+
 class FakeSession:
-    def __init__(self) -> None:
-        self.shutdown_called = False
+    def __init__(self, events: list[str]) -> None:
+        self.events = events
+
+    def once(self, event: str, callback: object) -> None:
+        del callback
+        self.events.append(f"listen:{event}")
+
+    def say(self, text: str, *, allow_interruptions: bool) -> FakeSpeechHandle:
+        self.events.append(f"say:{text}:{allow_interruptions}")
+        return FakeSpeechHandle(self.events)
 
     def shutdown(self) -> None:
-        self.shutdown_called = True
+        self.events.append("shutdown")
 
 
 class FakeRunContext:
     def __init__(self) -> None:
-        self.session = FakeSession()
+        self.events: list[str] = []
+        self.session = FakeSession(self.events)
+
+    def disallow_interruptions(self) -> None:
+        self.events.append("disallow_interruptions")
+
+    async def wait_for_playout(self) -> None:
+        self.events.append("pre_tool_speech_played")
 
 
-def test_disconnect_waits_for_carrier_grace(monkeypatch: pytest.MonkeyPatch) -> None:
-    delays: list[float] = []
-
-    async def record_sleep(delay: float) -> None:
-        delays.append(delay)
-
-    monkeypatch.setattr(asyncio, "sleep", record_sleep)
+def test_goodbye_plays_before_carrier_grace_and_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     ctx = FakeRunContext()
 
-    asyncio.run(GracefulEndCallTool()._shutdown_after_grace(cast("RunContext", ctx)))
+    async def record_sleep(delay: float) -> None:
+        ctx.events.append(f"sleep:{delay}")
 
-    assert delays == [GOODBYE_DISCONNECT_GRACE_SECONDS]
-    assert ctx.session.shutdown_called is True
+    monkeypatch.setattr(asyncio, "sleep", record_sleep)
+    asyncio.run(
+        GracefulEndCallTool()._speak_goodbye_and_shutdown(cast("RunContext", ctx))
+    )
+
+    assert ctx.events == [
+        "disallow_interruptions",
+        "listen:close",
+        "pre_tool_speech_played",
+        "say:Thank you, and have a great day!:False",
+        "goodbye_played",
+        f"sleep:{GOODBYE_DISCONNECT_GRACE_SECONDS}",
+        "shutdown",
+    ]

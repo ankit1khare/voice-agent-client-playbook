@@ -9,6 +9,12 @@ speech. When the caller is done, the end-call tool plays the final goodbye,
 waits for audio playout plus a one-second carrier grace period, and deletes the
 room so the agent disconnects the phone call.
 
+At session end, the worker builds a LiveKit session report and writes the full
+timestamped chat history, including tool calls, as a structured
+`session_end_transcript` record in the private cloud agent logs. This starts with
+calls handled by the version that contains the hook. It cannot recover earlier
+sessions.
+
 The agent uses LiveKit Inference for the voice pipeline:
 
 - STT: Deepgram Flux (`deepgram/flux-general`)

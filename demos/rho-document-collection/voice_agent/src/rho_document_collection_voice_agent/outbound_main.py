@@ -26,6 +26,9 @@ from rho_document_collection_voice_agent.runtime import (
     build_room_options,
     create_agent_session,
 )
+from rho_document_collection_voice_agent.session_reporting import (
+    log_session_transcript,
+)
 from rho_document_collection_voice_agent.settings import load_settings
 
 logger = logging.getLogger("rho-outbound-demo")
@@ -37,7 +40,8 @@ PARTICIPANT_JOIN_TIMEOUT_SECONDS = 10.0
 
 
 @server.rtc_session(
-    agent_name=os.getenv("RHO_OUTBOUND_AGENT_NAME", OUTBOUND_AGENT_NAME).strip()
+    agent_name=os.getenv("RHO_OUTBOUND_AGENT_NAME", OUTBOUND_AGENT_NAME).strip(),
+    on_session_end=log_session_transcript,
 )
 async def rho_outbound_document_collection_demo(ctx: JobContext) -> None:
     """Place one explicitly authorized synthetic outbound call."""

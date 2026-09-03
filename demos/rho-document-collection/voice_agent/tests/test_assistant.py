@@ -63,7 +63,7 @@ def test_inbound_agent_ends_completed_calls() -> None:
     assert isinstance(assistant.tools[0], GracefulEndCallTool)
     assert "call the end_call tool immediately" in instructions
     assert "Never say goodbye without calling end_call" in instructions
-    assert FINAL_GOODBYE == "Thanks for calling Rho. Goodbye."
+    assert FINAL_GOODBYE == "Thank you, and have a great day!"
     assert GOODBYE_DISCONNECT_GRACE_SECONDS == 1.0
 
 

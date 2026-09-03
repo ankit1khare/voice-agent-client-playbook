@@ -93,7 +93,8 @@ call-screening service. See `OUTBOUND_RUNBOOK.md` for the complete outcome map.
 | Guided upload | Jenny gives one step at a time and asks what the caller sees. |
 | Caller-reported completion | Jenny acknowledges the report but does not claim Rho confirmed receipt. |
 | Interruption | After the fixed opening, ordinary caller speech stops Jenny within the VAD threshold. |
-| Agent hangup | When the caller is done, Jenny says "Thanks for calling Rho. Goodbye," waits for playout plus the carrier grace period, and disconnects the room. |
+| Agent hangup | When the caller is done, Jenny says "Thank you, and have a great day!", waits for playout plus the carrier grace period, and disconnects the room. |
+| Session transcript | After the session closes, private cloud logs contain one structured `session_end_transcript` record with the timestamped chat history and tool calls. |
 | Unknown business | Jenny does not reveal Northstar or invent another record. |
 | Advice boundary | Jenny declines financial, legal, tax, underwriting, and credit advice. |
 | Upload questions | Jenny explains unzip-first and the 10 MB limit. |

@@ -16,13 +16,19 @@ from rho_document_collection_voice_agent.runtime import (
     create_agent_session,
     play_initial_disclosure,
 )
+from rho_document_collection_voice_agent.session_reporting import (
+    log_session_transcript,
+)
 from rho_document_collection_voice_agent.settings import load_settings
 
 settings = load_settings()
 server = AgentServer()
 
 
-@server.rtc_session(agent_name=settings.agent_name)
+@server.rtc_session(
+    agent_name=settings.agent_name,
+    on_session_end=log_session_transcript,
+)
 async def rho_document_collection_demo(ctx: agents.JobContext) -> None:
     """Route explicit outbound jobs or handle an inbound call."""
     if is_outbound_job_metadata(ctx.job.metadata):

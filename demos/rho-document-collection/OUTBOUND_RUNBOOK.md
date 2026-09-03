@@ -145,9 +145,14 @@ voicemail message remain non-interruptible.
 
 Both inbound and outbound assistants have an end-call tool. When the caller says
 goodbye, says they need nothing else, or asks to end the call, Jenny says
-"Thanks for calling Rho. Goodbye." The tool waits for speech playout and gives
+"Thank you, and have a great day!" The tool waits for speech playout and gives
 the carrier one additional second before it deletes the room and disconnects the
 SIP call from the agent side.
+
+After the session closes, the worker builds a LiveKit session report and writes
+the complete timestamped chat history and tool calls to the private agent logs as
+`session_end_transcript`. The hook applies only to calls handled after its
+deployment and cannot recover an earlier transcript.
 
 ## Validate without dialing
 
