@@ -1,8 +1,8 @@
 # Voice agent client playbook
 
-A runnable reference for turning a nontechnical customer's workflow into a
-small, testable voice agent. The example handles one inbound document-reminder
-call with LiveKit and Rime Coda.
+A collection of runnable Rime voice AI demos and practical notes for building
+with nontechnical customers. The root example handles one inbound
+document-reminder call with LiveKit and Rime Coda.
 
 The code is intentionally narrow. It uses one fictional organization, one
 document request, and one approved help answer. That keeps the first demo easy
@@ -11,6 +11,13 @@ to review with the customer before anyone connects production data or telephony.
 Start with the [build article](ARTICLE.md), use the
 [customer worksheet](CUSTOMER_WORKSHEET.md) in discovery, and track delivery
 with the [implementation plan](IMPLEMENTATION_PLAN.md).
+
+## Worked demos
+
+- [Rho document collection](demos/rho-document-collection) runs inbound and
+  guarded outbound calls in one persistent LiveKit Cloud worker. It includes
+  AMD, voicemail, responsive caller interruption, agent-side hangup, synthetic
+  demo data, tests, and operating runbooks.
 
 ## What the reference demonstrates
 

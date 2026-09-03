@@ -1,0 +1,7 @@
+name: rho_document_collection_demo
+kind: customer
+customer: rho
+lifecycle: demo
+audience: single-customer
+deployables:
+  - voice_agent

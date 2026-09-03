@@ -1,0 +1,22 @@
+{
+  "dispatch_rule": {
+    "rule": {
+      "dispatchRuleCallee": {
+        "roomPrefix": "rho-inbound",
+        "randomize": true
+      }
+    },
+    "trunkIds": [
+      "PN_PPN_cYgSqL2hymfB"
+    ],
+    "hidePhoneNumber": true,
+    "name": "Rho inbound document collection demo",
+    "roomConfig": {
+      "agents": [
+        {
+          "agentName": "rho-document-collection-demo"
+        }
+      ]
+    }
+  }
+}

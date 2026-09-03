@@ -1,0 +1,47 @@
+[tool.coverage.run]
+branch = true
+source = ["src"]
+
+[tool.coverage.report]
+exclude_lines = ["if TYPE_CHECKING:"]
+show_missing = true
+
+[tool.pytest.ini_options]
+addopts = "--cov --cov-report=term-missing"
+
+[project]
+name = "rho_document_collection_voice_agent"
+version = "1.0.0"
+description = "Inbound and guarded outbound LiveKit agents for the Rho document collection demo."
+requires-python = ">=3.10,<3.15"
+readme = "README.md"
+dependencies = [
+    "livekit-agents>=1.7.1,<2",
+    "livekit-plugins-ai-coustics>=0.3.0",
+    "python-dotenv>=1.2.1",
+]
+
+[project.scripts]
+rho-outbound-dispatch = "rho_document_collection_voice_agent.dispatch_outbound:main"
+
+[dependency-groups]
+dev = [
+    "ruff==0.15.20",
+    "ty==0.0.56",
+    "pytest>=8.3.4",
+    "pytest-sugar>=1.0.0",
+    "pytest-cov>=6.0.0",
+    "pytest-html>=4.1.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.8.9,<0.9.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+required-version = "==0.15.20"
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "B", "SIM", "I", "ANN"]
