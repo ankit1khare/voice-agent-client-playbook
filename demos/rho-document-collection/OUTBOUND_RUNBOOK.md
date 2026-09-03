@@ -81,14 +81,11 @@ and runs the call; no local worker must remain active.
 
 ## Deploy from the repository
 
-The repository release adapter refuses uncommitted agent source. From the
-repository root, deploy a clean commit with:
+Deploy from a clean repository commit so LiveKit records the source revision:
 
 ~~~bash
-./scripts/deploy-livekit-agent \
-  --source customers/rho/document_collection_demo/voice_agent \
-  -- \
-  --project rime
+cd demos/rho-document-collection/voice_agent
+lk agent deploy --project rime .
 ~~~
 
 Existing cloud secrets remain attached to the agent. If a trunk or safety switch

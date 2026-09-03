@@ -61,10 +61,11 @@ be running.
 
 ### Option B: Jenny calls Ethan
 
-From any authorized checkout with LiveKit project credentials, run:
+From any authorized checkout of this repository with LiveKit project
+credentials, run:
 
 ~~~bash
-cd customers/rho/document_collection_demo/voice_agent
+cd demos/rho-document-collection/voice_agent
 RHO_ENABLE_OUTBOUND_CALLS=true uv run rho-outbound-dispatch \
   --phone-number +1XXXXXXXXXX \
   --request-id ethan-demo-YYYYMMDD \

@@ -37,15 +37,12 @@ lk agent dev \
 
 ## Persistent cloud deployment
 
-The checked-in `livekit.toml` points to cloud agent `CA_Ma2qDzcPwggq`. Deploy a
-clean committed snapshot from the repository root with the repository's release
-adapter:
+The checked-in `livekit.toml` points to cloud agent `CA_Ma2qDzcPwggq`. Deploy
+from a clean commit so LiveKit records the source revision:
 
 ~~~bash
-./scripts/deploy-livekit-agent \
-  --source customers/rho/document_collection_demo/voice_agent \
-  -- \
-  --project rime
+cd demos/rho-document-collection/voice_agent
+lk agent deploy --project rime .
 ~~~
 
 The runtime is LiveKit Cloud, not the machine that runs the deploy command.
