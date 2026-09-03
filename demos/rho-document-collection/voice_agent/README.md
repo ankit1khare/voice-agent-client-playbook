@@ -5,8 +5,9 @@ Inbound calls and explicitly authorized outbound dispatches share the
 `rho-document-collection-demo` deployment.
 
 After the fixed disclosure, VAD barge-in stops Jenny after 0.3 seconds of caller
-speech. When the caller is done, LiveKit's end-call tool plays the final goodbye
-and deletes the room so the agent disconnects the phone call.
+speech. When the caller is done, the end-call tool plays the final goodbye,
+waits for audio playout plus a one-second carrier grace period, and deletes the
+room so the agent disconnects the phone call.
 
 The agent uses LiveKit Inference for the voice pipeline:
 

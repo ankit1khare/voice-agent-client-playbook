@@ -143,10 +143,11 @@ Jenny uses VAD barge-in with a 0.3-second minimum. Once the disclosure finishes,
 ordinary caller speech stops the current response. The fixed disclosure and
 voicemail message remain non-interruptible.
 
-Both inbound and outbound assistants have LiveKit's end-call tool. When the
-caller says goodbye, says they need nothing else, or asks to end the call, Jenny
-says "Thanks for calling Rho. Goodbye." The tool then deletes the room and
-disconnects the SIP call from the agent side.
+Both inbound and outbound assistants have an end-call tool. When the caller says
+goodbye, says they need nothing else, or asks to end the call, Jenny says
+"Thanks for calling Rho. Goodbye." The tool waits for speech playout and gives
+the carrier one additional second before it deletes the room and disconnects the
+SIP call from the agent side.
 
 ## Validate without dialing
 

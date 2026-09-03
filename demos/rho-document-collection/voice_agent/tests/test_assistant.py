@@ -1,13 +1,15 @@
 """Tests for Jenny's instructions and exact disclosure."""
 
-from livekit.agents.beta.tools import EndCallTool
-
 from rho_document_collection_voice_agent.assistant import (
     INITIAL_DISCLOSURE,
     RhoDocumentCollectionAssistant,
     assistant_instructions,
 )
-from rho_document_collection_voice_agent.call_control import FINAL_GOODBYE
+from rho_document_collection_voice_agent.call_control import (
+    FINAL_GOODBYE,
+    GOODBYE_DISCONNECT_GRACE_SECONDS,
+    GracefulEndCallTool,
+)
 
 
 def test_disclosure_is_exact_and_complete() -> None:
@@ -58,10 +60,11 @@ def test_inbound_agent_ends_completed_calls() -> None:
     instructions = assistant_instructions()
 
     assert len(assistant.tools) == 1
-    assert isinstance(assistant.tools[0], EndCallTool)
+    assert isinstance(assistant.tools[0], GracefulEndCallTool)
     assert "call the end_call tool immediately" in instructions
     assert "Never say goodbye without calling end_call" in instructions
     assert FINAL_GOODBYE == "Thanks for calling Rho. Goodbye."
+    assert GOODBYE_DISCONNECT_GRACE_SECONDS == 1.0
 
 
 def test_instructions_do_not_leak_reference_customer_content() -> None:
