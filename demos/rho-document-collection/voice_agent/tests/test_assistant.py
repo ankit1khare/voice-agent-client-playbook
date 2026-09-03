@@ -6,8 +6,8 @@ from rho_document_collection_voice_agent.assistant import (
     assistant_instructions,
 )
 from rho_document_collection_voice_agent.call_control import (
-    FINAL_GOODBYE,
     GOODBYE_DISCONNECT_GRACE_SECONDS,
+    INBOUND_FINAL_GOODBYE,
     GracefulEndCallTool,
 )
 
@@ -63,7 +63,7 @@ def test_inbound_agent_ends_completed_calls() -> None:
     assert isinstance(assistant.tools[0], GracefulEndCallTool)
     assert "call the end_call tool immediately" in instructions
     assert "Never say goodbye without calling end_call" in instructions
-    assert FINAL_GOODBYE == "Thank you, and have a great day!"
+    assert INBOUND_FINAL_GOODBYE == "Thank you for calling Rho. Have a great day."
     assert GOODBYE_DISCONNECT_GRACE_SECONDS == 1.0
 
 

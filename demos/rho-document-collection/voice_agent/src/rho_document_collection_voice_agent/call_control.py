@@ -6,7 +6,8 @@ from livekit.agents import RunContext, function_tool, get_job_context
 from livekit.agents.llm import ToolFlag, Toolset
 from livekit.agents.voice.events import CloseEvent
 
-FINAL_GOODBYE = "Thank you, and have a great day!"
+INBOUND_FINAL_GOODBYE = "Thank you for calling Rho. Have a great day."
+OUTBOUND_FINAL_GOODBYE = "Thanks, goodbye for now. Have a great day."
 GOODBYE_DISCONNECT_GRACE_SECONDS = 1.0
 
 END_CALL_DESCRIPTION = """
@@ -24,8 +25,9 @@ is unclear. Never merely say goodbye without using this tool.
 class GracefulEndCallTool(Toolset):
     """End a call only after the final spoken audio has cleared the phone line."""
 
-    def __init__(self) -> None:
+    def __init__(self, final_goodbye: str = INBOUND_FINAL_GOODBYE) -> None:
         super().__init__(id="end_call")
+        self._final_goodbye = final_goodbye
 
     @function_tool(
         name="end_call",
@@ -40,7 +42,7 @@ class GracefulEndCallTool(Toolset):
         ctx.disallow_interruptions()
         ctx.session.once("close", self._on_session_close)
         await ctx.wait_for_playout()
-        goodbye = ctx.session.say(FINAL_GOODBYE, allow_interruptions=False)
+        goodbye = ctx.session.say(self._final_goodbye, allow_interruptions=False)
         await goodbye.wait_for_playout()
         await asyncio.sleep(GOODBYE_DISCONNECT_GRACE_SECONDS)
         ctx.session.shutdown()
@@ -55,6 +57,8 @@ class GracefulEndCallTool(Toolset):
         job_ctx.shutdown(reason=ev.reason.value)
 
 
-def build_end_call_tool() -> GracefulEndCallTool:
+def build_end_call_tool(
+    final_goodbye: str = INBOUND_FINAL_GOODBYE,
+) -> GracefulEndCallTool:
     """Return the Rho call-ending tool."""
-    return GracefulEndCallTool()
+    return GracefulEndCallTool(final_goodbye)

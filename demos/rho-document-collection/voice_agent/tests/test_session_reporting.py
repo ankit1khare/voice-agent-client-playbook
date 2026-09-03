@@ -31,7 +31,7 @@ class FakeChatHistory:
                 {
                     "type": "message",
                     "role": "assistant",
-                    "content": ["Thank you, and have a great day!"],
+                    "content": ["Thank you for calling Rho. Have a great day."],
                     "created_at": 1_788_468_001.0,
                 },
             ]
@@ -91,7 +91,7 @@ def test_session_end_logs_complete_timestamped_history(
                 {
                     "type": "message",
                     "role": "assistant",
-                    "content": ["Thank you, and have a great day!"],
+                    "content": ["Thank you for calling Rho. Have a great day."],
                     "created_at": 1_788_468_001.0,
                 },
             ]

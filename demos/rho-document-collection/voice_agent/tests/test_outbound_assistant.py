@@ -3,8 +3,8 @@
 from pathlib import Path
 
 from rho_document_collection_voice_agent.call_control import (
-    FINAL_GOODBYE,
     GOODBYE_DISCONNECT_GRACE_SECONDS,
+    OUTBOUND_FINAL_GOODBYE,
     GracefulEndCallTool,
 )
 from rho_document_collection_voice_agent.outbound_assistant import (
@@ -53,5 +53,5 @@ def test_outbound_agent_ends_completed_calls() -> None:
     assert isinstance(assistant.tools[0], GracefulEndCallTool)
     assert "call the end_call tool immediately" in instructions
     assert "Never say goodbye without calling end_call" in instructions
-    assert FINAL_GOODBYE == "Thank you, and have a great day!"
+    assert OUTBOUND_FINAL_GOODBYE == "Thanks, goodbye for now. Have a great day."
     assert GOODBYE_DISCONNECT_GRACE_SECONDS == 1.0

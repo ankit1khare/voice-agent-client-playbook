@@ -8,6 +8,7 @@ from livekit.agents import RunContext
 
 from rho_document_collection_voice_agent.call_control import (
     GOODBYE_DISCONNECT_GRACE_SECONDS,
+    OUTBOUND_FINAL_GOODBYE,
     GracefulEndCallTool,
 )
 
@@ -65,8 +66,26 @@ def test_goodbye_plays_before_carrier_grace_and_shutdown(
         "disallow_interruptions",
         "listen:close",
         "pre_tool_speech_played",
-        "say:Thank you, and have a great day!:False",
+        "say:Thank you for calling Rho. Have a great day.:False",
         "goodbye_played",
         f"sleep:{GOODBYE_DISCONNECT_GRACE_SECONDS}",
         "shutdown",
     ]
+
+
+def test_outbound_tool_uses_outbound_closing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = FakeRunContext()
+
+    async def skip_sleep(delay: float) -> None:
+        del delay
+
+    monkeypatch.setattr(asyncio, "sleep", skip_sleep)
+    asyncio.run(
+        GracefulEndCallTool(OUTBOUND_FINAL_GOODBYE)._speak_goodbye_and_shutdown(
+            cast("RunContext", ctx)
+        )
+    )
+
+    assert "say:Thanks, goodbye for now. Have a great day.:False" in ctx.events

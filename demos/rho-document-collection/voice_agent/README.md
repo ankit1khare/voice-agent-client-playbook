@@ -5,9 +5,11 @@ Inbound calls and explicitly authorized outbound dispatches share the
 `rho-document-collection-demo` deployment.
 
 After the fixed disclosure, VAD barge-in stops Jenny after 0.3 seconds of caller
-speech. When the caller is done, the end-call tool plays the final goodbye,
-waits for audio playout plus a one-second carrier grace period, and deletes the
-room so the agent disconnects the phone call.
+speech. When the caller is done, the end-call tool plays a fixed closing suited
+to the call direction, waits for audio playout plus a one-second carrier grace
+period, and deletes the room so the agent disconnects the phone call. Inbound
+calls end with "Thank you for calling Rho. Have a great day." Outbound calls end
+with "Thanks, goodbye for now. Have a great day."
 
 At session end, the worker builds a LiveKit session report and writes the full
 timestamped chat history, including tool calls, as a structured

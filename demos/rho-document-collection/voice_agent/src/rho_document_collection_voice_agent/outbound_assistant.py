@@ -2,7 +2,10 @@
 
 from livekit.agents import Agent
 
-from rho_document_collection_voice_agent.call_control import build_end_call_tool
+from rho_document_collection_voice_agent.call_control import (
+    OUTBOUND_FINAL_GOODBYE,
+    build_end_call_tool,
+)
 from rho_document_collection_voice_agent.demo_context import (
     DEMO_BUSINESS,
     RHO_APPLYING_FAQ_URL,
@@ -28,7 +31,7 @@ class RhoOutboundDocumentCollectionAssistant(Agent):
     def __init__(self) -> None:
         super().__init__(
             instructions=outbound_assistant_instructions(),
-            tools=[build_end_call_tool()],
+            tools=[build_end_call_tool(OUTBOUND_FINAL_GOODBYE)],
         )
 
 

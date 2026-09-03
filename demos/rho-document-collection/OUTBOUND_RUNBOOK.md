@@ -145,7 +145,7 @@ voicemail message remain non-interruptible.
 
 Both inbound and outbound assistants have an end-call tool. When the caller says
 goodbye, says they need nothing else, or asks to end the call, Jenny says
-"Thank you, and have a great day!" The tool waits for speech playout and gives
+"Thanks, goodbye for now. Have a great day." The tool waits for speech playout and gives
 the carrier one additional second before it deletes the room and disconnects the
 SIP call from the agent side.
 
