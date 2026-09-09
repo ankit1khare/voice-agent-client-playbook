@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from rho_document_collection_voice_agent.demo_context import DEMO_CALL_RECORD
 from rho_document_collection_voice_agent.outbound import (
     AMDAction,
     CallOutcome,
@@ -33,12 +34,15 @@ def test_outbound_request_round_trips_without_phone_identity_leak() -> None:
     assert parsed == request
     assert parsed.participant_identity == "rho-outbound-demo-1234"
     assert parsed.masked_phone_number == "+********0123"
+    assert parsed.call_record == DEMO_CALL_RECORD
 
 
 def test_outbound_metadata_has_an_explicit_mode() -> None:
     metadata = _valid_request().to_metadata()
 
-    assert json.loads(metadata)["mode"] == "rho_outbound_test"
+    payload = json.loads(metadata)
+    assert payload["mode"] == "rho_outbound_test"
+    assert payload["call_record"] == DEMO_CALL_RECORD.to_dict()
     assert is_outbound_job_metadata(metadata) is True
 
 
@@ -54,6 +58,7 @@ def test_inbound_metadata_does_not_select_outbound(metadata: str) -> None:
         ({"request_id": "Demo 1234"}, "lowercase"),
         ({"demo_only": False}, "synthetic demo"),
         ({"authorized_test_call": False}, "authorized_test_call"),
+        ({"call_record": {"record_id": "missing-fields"}}, "required_documents"),
     ],
 )
 def test_outbound_request_rejects_unsafe_metadata(
@@ -75,6 +80,18 @@ def test_preview_structure_validation_does_not_require_call_authorization() -> N
     )
 
     request.validate_structure()
+
+
+def test_client_service_number_is_never_a_test_destination() -> None:
+    request = OutboundCallRequest(
+        phone_number="+18557438746",
+        request_id="blocked-support-number",
+        demo_only=True,
+        authorized_test_call=True,
+    )
+
+    with pytest.raises(ValueError, match="Client Service"):
+        request.validate_structure()
 
 
 def test_sip_request_uses_stored_trunk_and_privacy_controls() -> None:

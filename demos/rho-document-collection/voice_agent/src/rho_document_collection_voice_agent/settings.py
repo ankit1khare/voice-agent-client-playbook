@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 DEFAULT_AGENT_NAME = "rho-document-collection-demo"
 DEFAULT_STT_MODEL = "deepgram/flux-general"
 DEFAULT_STT_LANGUAGE = "en"
-DEFAULT_LLM_MODEL = "google/gemma-4-31b-it"
+DEFAULT_LLM_MODEL = "google/gemini-3.1-flash-lite"
 DEFAULT_TTS_MODEL = "rime/coda"
 DEFAULT_TTS_VOICE = "wawona"
 DEFAULT_TTS_LANGUAGE = "en"

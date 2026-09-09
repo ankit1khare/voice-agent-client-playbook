@@ -5,9 +5,14 @@ import asyncio
 import json
 import os
 import secrets
+from pathlib import Path
 
 from livekit import api
 
+from rho_document_collection_voice_agent.demo_context import (
+    DEMO_CALL_RECORD,
+    CentralizedCallRecord,
+)
 from rho_document_collection_voice_agent.outbound import (
     OUTBOUND_AGENT_NAME,
     OutboundCallRequest,
@@ -54,6 +59,11 @@ def _parser() -> argparse.ArgumentParser:
         default=os.getenv("RHO_OUTBOUND_AGENT_NAME", OUTBOUND_AGENT_NAME),
     )
     parser.add_argument(
+        "--record-file",
+        type=Path,
+        help="JSON file containing a validated synthetic centralized call record",
+    )
+    parser.add_argument(
         "--execute",
         action="store_true",
         help="create the dispatch; without this flag the command only previews it",
@@ -79,21 +89,32 @@ def main() -> None:
     ):
         raise SystemExit("set RHO_ENABLE_OUTBOUND_CALLS=true before using --execute")
 
+    call_record = _load_call_record(args.record_file)
     call = OutboundCallRequest(
         phone_number=args.phone_number,
         request_id=args.request_id,
         demo_only=True,
         authorized_test_call=args.authorized_test_call,
+        call_record=call_record,
     )
-    call.validate_structure()
-    if args.execute:
-        call.validate()
+    try:
+        call.validate_structure()
+        if args.execute:
+            call.validate()
+    except ValueError as exc:
+        raise SystemExit(f"invalid outbound request: {exc}") from exc
 
     request = build_dispatch_request(call, agent_name=args.agent_name)
     preview = {
         "agent_name": request.agent_name,
         "room": request.room,
         "request_id": call.request_id,
+        "call_record_id": call.call_record.record_id,
+        "business_name": call.call_record.business_name,
+        "required_documents": [
+            document.display_name for document in call.call_record.required_documents
+        ],
+        "deadline": call.call_record.upload_deadline.isoformat(),
         "destination": call.masked_phone_number,
         "authorized_test_call": call.authorized_test_call,
         "mode": "execute" if args.execute else "preview",
@@ -103,6 +124,21 @@ def main() -> None:
     if args.execute:
         dispatch_id = asyncio.run(_dispatch(call, args.agent_name))
         print(json.dumps({"dispatch_id": dispatch_id}, indent=2))
+
+
+def _load_call_record(path: Path | None) -> CentralizedCallRecord:
+    if path is None:
+        return DEMO_CALL_RECORD
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"record file must contain valid JSON: {exc}") from exc
+    except OSError as exc:
+        raise SystemExit(f"could not read record file: {exc}") from exc
+    try:
+        return CentralizedCallRecord.from_dict(payload)
+    except ValueError as exc:
+        raise SystemExit(f"invalid call record: {exc}") from exc
 
 
 if __name__ == "__main__":

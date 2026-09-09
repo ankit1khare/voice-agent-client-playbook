@@ -1,9 +1,10 @@
 # Rho outbound demo runbook
 
 The Phase 1.5 outbound path runs inside the persistent
-`rho-document-collection-demo` LiveKit Cloud worker. It uses only the fictional
-Northstar Labs record. Every call still requires an explicit dispatch and an
-authorized-test flag.
+`rho-document-collection-demo` LiveKit Cloud worker. It accepts a validated
+synthetic centralized call record and defaults to the fictional Northstar Labs
+record. Every call still requires an explicit dispatch and an authorized-test
+flag.
 
 ## What it does
 
@@ -21,6 +22,11 @@ Pre-answer SIP failures map to `busy_or_rejected`, `no_answer`, or `dial_failed`
 Every attempt writes a structured `outbound_call_result` record to the worker log.
 The record omits the destination number.
 
+Live conversations can also write `zendesk_ticket_preview` log records for
+business dispositions. These records always contain `demo_only=true`,
+`write_performed=false`, and `zendesk_action=preview`. They make no Zendesk
+request. Human-transfer requests are also previews and never dial Client Service.
+
 ## Safety controls
 
 - The metadata must say `demo_only=true` and `authorized_test_call=true`.
@@ -33,20 +39,33 @@ The record omits the destination number.
   authorized test number with a known call-screening service. Jenny then plays
   the approved disclosure into the screening prompt and keeps the call open.
 - The dispatcher previews a masked destination unless `--execute` is present.
+- The dispatcher rejects Rho Client Service (`+1 855-743-8746`) as a destination
+  even when all execution flags are present.
 - Replace the shared test trunk with a dedicated Rho trunk before any customer
   or production call.
 - The current inbound deployment and number are unchanged.
 
-The outbound disclosure is a draft for the synthetic demo. Rho must approve the
-production wording, consent rules, voicemail content, and retention policy before
-any customer call.
+Rho approved naming the business before listener authorization for this demo.
+Jenny still withholds the required documents, deadline, and upload path until the
+listener confirms that they are the named contact or are authorized to help.
 
 ## Preview a call
 
-This command performs no LiveKit write and places no call:
+This command performs no LiveKit write and places no call. It validates the
+synthetic record and masks the destination:
 
 ~~~bash
-uv run rho-outbound-dispatch --phone-number +14155550123
+uv run rho-outbound-dispatch \
+  --phone-number +14155550123 \
+  --record-file ../assets/demo_call_record.json
+~~~
+
+Preview an extension outcome without calling or writing to Zendesk:
+
+~~~bash
+uv run rho-zendesk-preview \
+  --disposition extension_requested \
+  --requested-submission-date 2026-09-25
 ~~~
 
 ## Cloud worker
@@ -72,6 +91,7 @@ Run this only with a number whose owner agreed to receive the call:
 RHO_ENABLE_OUTBOUND_CALLS=true uv run rho-outbound-dispatch \
   --phone-number +14155550123 \
   --request-id ethan-demo-YYYYMMDD \
+  --record-file ../assets/demo_call_record.json \
   --authorized-test-call \
   --execute
 ~~~
@@ -150,9 +170,10 @@ the carrier one additional second before it deletes the room and disconnects the
 SIP call from the agent side.
 
 After the session closes, the worker builds a LiveKit session report and writes
-the complete timestamped chat history and tool calls to the private agent logs as
-`session_end_transcript`. The hook applies only to calls handled after its
-deployment and cannot recover an earlier transcript.
+the complete timestamped chat history, tool calls, and full follow-up preview
+payloads to the private agent logs as `session_end_transcript`. The hook applies
+only to calls handled after its deployment and cannot recover an earlier
+transcript.
 
 ## Validate without dialing
 

@@ -2,11 +2,17 @@
 
 import json
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
 from livekit import api
+
+from rho_document_collection_voice_agent.demo_context import (
+    DEMO_CALL_RECORD,
+    RHO_SUPPORT_PHONE_E164,
+    CentralizedCallRecord,
+)
 
 OUTBOUND_AGENT_NAME = "rho-document-collection-demo"
 OUTBOUND_JOB_MODE = "rho_outbound_test"
@@ -49,6 +55,7 @@ class OutboundCallRequest:
     request_id: str
     demo_only: bool
     authorized_test_call: bool
+    call_record: CentralizedCallRecord = DEMO_CALL_RECORD
 
     @classmethod
     def from_metadata(cls, raw_metadata: str) -> "OutboundCallRequest":
@@ -68,6 +75,9 @@ class OutboundCallRequest:
             request_id=_required_string(payload, "request_id"),
             demo_only=payload.get("demo_only") is True,
             authorized_test_call=payload.get("authorized_test_call") is True,
+            call_record=CentralizedCallRecord.from_dict(
+                payload.get("call_record", DEMO_CALL_RECORD.to_dict())
+            ),
         )
         request.validate()
         return request
@@ -84,6 +94,10 @@ class OutboundCallRequest:
         """Validate identifiers without treating a preview as authorization."""
         if not _E164_PATTERN.fullmatch(self.phone_number):
             raise ValueError("phone_number must use E.164 format")
+        if self.phone_number == RHO_SUPPORT_PHONE_E164:
+            raise ValueError(
+                "Rho Client Service cannot be used as an outbound test destination"
+            )
         if not _REQUEST_ID_PATTERN.fullmatch(self.request_id):
             raise ValueError(
                 "request_id must contain lowercase letters, digits, or dashes"
@@ -101,7 +115,14 @@ class OutboundCallRequest:
 
     def to_metadata(self) -> str:
         """Serialize the request for an explicit LiveKit dispatch."""
-        payload = {"mode": OUTBOUND_JOB_MODE, **asdict(self)}
+        payload = {
+            "mode": OUTBOUND_JOB_MODE,
+            "phone_number": self.phone_number,
+            "request_id": self.request_id,
+            "demo_only": self.demo_only,
+            "authorized_test_call": self.authorized_test_call,
+            "call_record": self.call_record.to_dict(),
+        }
         return json.dumps(payload, separators=(",", ":"), sort_keys=True)
 
 

@@ -11,6 +11,7 @@ from rho_document_collection_voice_agent.session_reporting import (
     SESSION_TRANSCRIPT_ERROR_EVENT,
     SESSION_TRANSCRIPT_LOG_EVENT,
     log_session_transcript,
+    register_follow_up_previews,
 )
 
 
@@ -50,12 +51,15 @@ class FakeReport:
 class FakeJobContext:
     def __init__(self, history: FakeChatHistory) -> None:
         self.report = FakeReport(history)
+        self.job = type("FakeJob", (), {"id": "AJ_test"})()
 
     def make_session_report(self) -> FakeReport:
         return self.report
 
 
 class FailingJobContext:
+    job = type("FakeJob", (), {"id": "AJ_failure"})()
+
     def make_session_report(self) -> None:
         raise RuntimeError("report unavailable")
 
@@ -80,6 +84,7 @@ def test_session_end_logs_complete_timestamped_history(
         "room_id": "RM_test",
         "room": "rho-test-room",
         "ended_at": 1_788_468_002.0,
+        "follow_up_previews": [],
         "chat_history": {
             "items": [
                 {
@@ -104,6 +109,28 @@ def test_session_end_logs_complete_timestamped_history(
         "exclude_config_update": True,
         "strip_markup": True,
     }
+
+
+def test_session_end_includes_registered_follow_up_previews(
+    caplog: LogCaptureFixture,
+) -> None:
+    history = FakeChatHistory()
+    ctx = FakeJobContext(history)
+    preview = {
+        "conversation_disposition": "extension_requested",
+        "write_performed": False,
+    }
+    register_follow_up_previews("AJ_test", [preview])
+
+    with caplog.at_level(logging.INFO, logger="rho-session-report"):
+        asyncio.run(log_session_transcript(cast("JobContext", ctx)))
+
+    record = next(
+        record
+        for record in caplog.records
+        if record.message == SESSION_TRANSCRIPT_LOG_EVENT
+    )
+    assert record.__dict__["session_transcript"]["follow_up_previews"] == [preview]
 
 
 def test_session_report_failure_does_not_break_shutdown(

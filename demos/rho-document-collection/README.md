@@ -15,8 +15,15 @@ The solution contains:
 - `OUTBOUND_RUNBOOK.md`: outbound dispatch instructions, AMD outcomes, and
   safety gates.
 
-The demo uses only the fictional Northstar Labs record. It does not access Rho
-customer data or independently confirm uploads. Outbound dialing requires an
-authorized-test flag, explicit outbound metadata, and the cloud safety switch.
-The current shared test trunk is for internal synthetic demos only; use a
-dedicated Rho trunk before any customer or production call.
+The demo uses a validated synthetic call record and ships with a fictional
+Northstar Labs example containing several required documents. Live conversations
+can produce structured Zendesk ticket previews for commitments, extension
+requests, disputed deadlines, claimed prior uploads, existing Rho contacts,
+requirement reviews, secure-link requests, and human-transfer requests. Every
+preview says that no external write or transfer occurred.
+
+The demo does not access Rho customer data, independently confirm uploads, write
+to Zendesk, or transfer a caller. Outbound dialing requires an authorized-test
+flag, explicit outbound metadata, and the cloud safety switch. The current shared
+test trunk is for internal synthetic demos only; use a dedicated Rho trunk before
+any customer or production call.

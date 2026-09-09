@@ -23,6 +23,7 @@ dependencies = [
 
 [project.scripts]
 rho-outbound-dispatch = "rho_document_collection_voice_agent.dispatch_outbound:main"
+rho-zendesk-preview = "rho_document_collection_voice_agent.preview_workflow:main"
 
 [dependency-groups]
 dev = [

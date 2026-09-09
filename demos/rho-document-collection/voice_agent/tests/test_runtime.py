@@ -48,7 +48,7 @@ def test_build_session_model_config_uses_livekit_inference_models() -> None:
 
     assert config.stt_model == "deepgram/flux-general"
     assert config.stt_language == "en"
-    assert config.llm_model == "google/gemma-4-31b-it"
+    assert config.llm_model == "google/gemini-3.1-flash-lite"
     assert config.tts_model == "rime/coda"
     assert config.tts_voice == "wawona"
     assert config.tts_language == "en"

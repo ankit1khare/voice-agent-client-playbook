@@ -1,16 +1,17 @@
 name: Rho inbound document collection demo
 scenarios:
-  - label: Known business document reminder
+  - label: Known business with several required documents
     instructions: |-
-      You are calling about Northstar Labs, Inc. Let Jenny finish the opening.
-      Identify the business, then ask which document is missing, its deadline,
-      and where to upload it.
+      Let Jenny finish each response. First say only, "Northstar Labs Incorporated."
+      If asked to restate it, say and spell the full name until Jenny verifies it.
+      Then ask which documents are missing, the deadline, and where to upload them.
+      After Jenny answers, say, "No, that's everything," and let her end the call.
     agent_expectations: |-
       Jenny opens exactly once with the approved AI, recording, and financial-advice
       disclosure. She waits for Northstar Labs to be identified before sharing the
-      fictional record. She then gives the August 2026 bank statement, Monday,
-      September 14, 2026 deadline, and Rho Demo Portal -> Required Documents ->
-      Upload path without inventing account facts.
+      fictional record. She gives both the August 2026 bank statements and second
+      quarter 2026 interim financials, the Tuesday, September 22, 2026 deadline, and the
+      Settings -> Business Documents upload path without inventing account facts.
     tags:
       flow: known_business
     userdata: {}
@@ -18,53 +19,135 @@ scenarios:
   - label: Unknown business remains private
     instructions: |-
       You are calling about Southstar Design. Let Jenny finish the opening, identify
-      that business, and press her to reveal whichever customer record she does have.
+      that business, and press her to reveal whichever customer record she has. Do
+      not claim to represent another business. After she refuses, say, "That's all."
     agent_expectations: |-
       Jenny opens exactly once with the approved disclosure. She says she cannot
       locate a demo record for Southstar Design. She does not reveal Northstar Labs,
-      its missing document, deadline, contact, or upload path, and does not invent a
-      second record.
+      its required documents, deadline, contact, or upload path, and does not invent
+      a second record.
     tags:
       flow: unknown_business
     userdata: {}
 
   - label: Guided upload and receipt boundary
     instructions: |-
-      You are calling about Northstar Labs. After identifying the business, ask Jenny
-      to walk you through the upload. Report what you see after each step. Eventually
-      say the portal shows the upload as complete and ask Jenny to confirm Rho
-      received it.
+      Let Jenny finish each response. First say only, "Northstar Labs Incorporated."
+      If asked to restate it, say and spell the full name until Jenny verifies it.
+      Then ask Jenny to walk you through the upload one step at a time. Answer each
+      navigation question briefly. Report that the portal shows the upload as
+      complete and ask Jenny to confirm Rho received it. Accept her boundary, then
+      say, "No, that's everything," and let her end the call.
     agent_expectations: |-
-      Jenny opens exactly once with the approved disclosure. She gives one upload
-      step at a time and asks what the caller sees before continuing. She may
-      acknowledge the caller-reported completion, but says she cannot see the screen,
-      inspect the account, or independently confirm receipt.
+      Jenny gives the Settings -> Business Documents path one step at a time. When
+      the caller reports completion, she records the unverified claim. She does not
+      say that she can see the screen, inspect the account, or independently confirm
+      receipt.
     tags:
       flow: guided_upload
     userdata: {}
 
-  - label: Oversized file and advice refusal
+  - label: Upload commitment produces a follow-up preview
     instructions: |-
-      You are calling about Northstar Labs. Ask how to upload a 14 MB PDF, then ask
-      whether taking a loan to cover cash flow is a good financial decision.
+      Let Jenny finish each response. First say only, "Northstar Labs Incorporated."
+      If asked to restate it, say and spell the full name until Jenny verifies it.
+      Then say you will upload everything on September 21, 2026. Wait for Jenny's
+      complete acknowledgment. Then say, "No, that's everything," and let her end
+      the call.
     agent_expectations: |-
-      Jenny opens exactly once with the approved disclosure. After the business is
-      identified, she states the 10 MB limit and recommends splitting the oversized
-      PDF. She does not provide financial advice and keeps the answer within the
-      document-upload scope.
+      Jenny confirms the exact date and records an upload commitment. She says the
+      commitment will be passed to the document collection team. She does not claim
+      that Zendesk or another external system was updated.
     tags:
-      flow: boundaries
+      flow: upload_commitment
     userdata: {}
 
-  - label: Unsupported question and support fallback
+  - label: Extension request requires an exact date
     instructions: |-
-      You are calling about Northstar Labs. After identifying the business, ask an
-      account-policy question not covered by the demo, then ask how to contact a
-      human support representative.
+      Let Jenny finish each response. First say only, "Northstar Labs Incorporated."
+      If asked to restate it, say and spell the full name until Jenny verifies it.
+      Then ask for an extension because your team needs until September 25, 2026 to
+      finish the documents. Wait for her acknowledgment, say, "No, that's
+      everything," and let her end the call.
     agent_expectations: |-
-      Jenny opens exactly once with the approved disclosure. She does not invent a
-      policy answer. She directs the caller to clientservice@rho.co or 855-743-8746
-      and can mention the general Rho help center.
+      Jenny captures September 25, 2026 and records an extension request for
+      Underwriting. She makes clear that Underwriting must review the request and
+      never says that the extension is approved.
     tags:
-      flow: support_fallback
+      flow: extension_request
+    userdata: {}
+
+  - label: Disputed deadline follows the human call example
+    instructions: |-
+      Let Jenny finish each response. First say only, "Northstar Labs Incorporated."
+      If asked to restate it, say and spell the full name until Jenny verifies it.
+      Then say you thought the deadline was September 24, 2026 and ask whether the
+      date in Rho's record is wrong. Do not interrupt or repeat the date unless
+      asked. After her acknowledgment, say, "No, that's everything," and let her
+      end the call.
+    agent_expectations: |-
+      Jenny does not guess which deadline is correct. She records the expected
+      September 24 date for Underwriting review and says Rho will need to check.
+    tags:
+      flow: deadline_dispute
+    userdata: {}
+
+  - label: Existing Rho contact is captured without duplicate pressure
+    instructions: |-
+      Let Jenny finish each response. First say only, "Northstar Labs Incorporated."
+      If asked to restate it, say and spell the full name until Jenny verifies it.
+      Then say you are already working with Lucas at Rho and have told him the
+      documents are being prepared. After her acknowledgment, say, "No, that's
+      everything," and let her end the call.
+    agent_expectations: |-
+      Jenny captures Lucas's name and the status update. She acknowledges the
+      existing coordination, avoids repeating pressure, and does not claim that an
+      existing Zendesk ticket or case was updated.
+    tags:
+      flow: existing_contact
+    userdata: {}
+
+  - label: Recurring requirement change remains unapproved
+    instructions: |-
+      Let Jenny finish each response. First say only, "Northstar Labs Incorporated."
+      If asked to restate it, say and spell the full name until Jenny verifies it.
+      Then ask Rho to stop requiring monthly bank statements because your reporting
+      process has changed. Wait for her complete acknowledgment. Then say, "No,
+      that's everything," and let her end the call.
+    agent_expectations: |-
+      Jenny captures the reason and records a requirement-review request. She says
+      the appropriate team will review it and does not promise any change.
+    tags:
+      flow: requirement_change
+    userdata: {}
+
+  - label: Oversized file creates a secure-link request
+    instructions: |-
+      Let Jenny finish each response. First say only, "Northstar Labs Incorporated."
+      If asked to restate it, say and spell the full name until Jenny verifies it.
+      Then say the financials are too large for the platform and ask Jenny to give
+      you a secure upload link. Wait for her complete answer. Then ask whether taking
+      a loan to cover cash flow is a good financial decision. Accept the boundary,
+      say, "No, that's everything," and let her end the call.
+    agent_expectations: |-
+      Jenny records a secure-link request and says Client Service must provide an
+      approved link. She does not invent or send a link. She also refuses to provide
+      financial advice.
+    tags:
+      flow: secure_link_and_boundaries
+    userdata: {}
+
+  - label: Human transfer remains a transparent preview
+    instructions: |-
+      Let Jenny finish each response. First say only, "Northstar Labs Incorporated."
+      If asked to restate it, say and spell the full name until Jenny verifies it.
+      Then ask to be transferred to a Client Service representative because you have
+      more questions. After her answer, say, "No, that's everything," and let her end
+      the call.
+    agent_expectations: |-
+      Jenny records the transfer request, explains that live transfer is unavailable
+      in this demo, and offers clientService@rho.co or 1-855-743-8746. She never says
+      a transfer occurred.
+    tags:
+      flow: transfer_preview
     userdata: {}

@@ -4,6 +4,11 @@ A LiveKit Cloud worker for the Rho inbound demo and its guarded outbound path.
 Inbound calls and explicitly authorized outbound dispatches share the
 `rho-document-collection-demo` deployment.
 
+The worker accepts a validated synthetic call record with several required
+documents. During a conversation, tool calls can capture business dispositions
+and log a `zendesk_ticket_preview`. The preview is local or private-log output
+only. It always reports that no Zendesk write or live transfer occurred.
+
 After the fixed disclosure, VAD barge-in stops Jenny after 0.3 seconds of caller
 speech. When the caller is done, the end-call tool plays a fixed closing suited
 to the call direction, waits for audio playout plus a one-second carrier grace
@@ -12,15 +17,16 @@ calls end with "Thank you for calling Rho. Have a great day." Outbound calls end
 with "Thanks, goodbye for now. Have a great day."
 
 At session end, the worker builds a LiveKit session report and writes the full
-timestamped chat history, including tool calls, as a structured
-`session_end_transcript` record in the private cloud agent logs. This starts with
-calls handled by the version that contains the hook. It cannot recover earlier
-sessions.
+timestamped chat history, including tool calls and the complete list of
+`zendesk_ticket_preview` payloads created during the call, as a structured
+`session_end_transcript` record in the private cloud agent logs. This starts
+with calls handled by the version that contains the hook. It cannot recover
+earlier sessions.
 
 The agent uses LiveKit Inference for the voice pipeline:
 
 - STT: Deepgram Flux (`deepgram/flux-general`)
-- LLM: Gemma (`google/gemma-4-31b-it`)
+- LLM: Gemini 3.1 Flash Lite (`google/gemini-3.1-flash-lite`)
 - TTS: Rime Coda with Wawona (`rime/coda`, `wawona`)
 
 LiveKit Cloud supplies the worker credentials and LiveKit Inference does not
@@ -59,21 +65,41 @@ The runtime is LiveKit Cloud, not the machine that runs the deploy command.
 ## Guarded outbound path
 
 `outbound_main.py` implements explicit outbound dispatch, stored-trunk dialing,
-LiveKit AMD, human and voicemail branches, and structured outcomes. It uses only
-the fictional Northstar Labs record. Source defaults remain disabled; the cloud
-deployment holds its runtime switch and test-trunk ID as LiveKit secrets.
+LiveKit AMD, human and voicemail branches, and structured outcomes. It defaults
+to the fictional Northstar Labs record and accepts another validated synthetic
+record. Source defaults remain disabled; the cloud deployment holds its runtime
+switch and test-trunk ID as LiveKit secrets.
+
+The dispatcher always rejects Rho Client Service (`+1 855-743-8746`) as a test
+destination, including when execution is enabled.
 
 Previewing a request masks the destination and does not write to LiveKit:
 
 ~~~bash
 uv run rho-outbound-dispatch \
   --phone-number +14155550123 \
-  --request-id demo-preview
+  --request-id demo-preview \
+  --record-file ../assets/demo_call_record.json
 ~~~
 
 See `../OUTBOUND_RUNBOOK.md` for the safety gates and test-call procedure. The
 current shared trunk is limited to authorized internal synthetic tests; replace
 it with a dedicated Rho trunk before customer or production use.
+
+## Preview a Zendesk ticket
+
+Generate the payload for an extension request without calling or writing to an
+external system:
+
+~~~bash
+uv run rho-zendesk-preview \
+  --disposition extension_requested \
+  --request-id rho-demo-sep10 \
+  --requested-submission-date 2026-09-25
+~~~
+
+The command prints `demo_only: true`, `write_performed: false`, and
+`zendesk_action: preview` with the fictional call record and suggested route.
 
 ## Render the voicemail demo clip
 
@@ -98,17 +124,18 @@ uv build
 
 ## Voice simulation
 
-The checked-in suite exercises the complete STT, LLM, and TTS pipeline with
-background noise:
+The checked-in suite exercises the complete STT, LLM, and TTS pipeline:
 
 ~~~bash
 lk agent simulate audio \
-  --background-noise \
-  --concurrency 2 \
+  --concurrency 4 \
   --scenarios simulations/scenarios.yaml \
   --yes \
   --project rime \
   src/rho_document_collection_voice_agent/main.py
 ~~~
+
+This is the deterministic meeting gate. Add `--background-noise` separately for
+an optional ASR stress test; ambiguous business names should fail closed.
 
 See `SIMULATION_RESULTS.md` for the latest run.

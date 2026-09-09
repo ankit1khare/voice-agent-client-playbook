@@ -1,0 +1,20 @@
+{
+  "record_id": "rho-demo-sep10-001",
+  "business_name": "Northstar Labs, Inc.",
+  "contact_name": "Maya Chen",
+  "required_documents": [
+    {
+      "document_type": "bank statements",
+      "period": "August 2026"
+    },
+    {
+      "document_type": "interim financials",
+      "period": "Q2 2026"
+    }
+  ],
+  "upload_deadline": "2026-09-22",
+  "upload_path": [
+    "Settings",
+    "Business Documents"
+  ]
+}

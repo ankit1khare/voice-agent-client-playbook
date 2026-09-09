@@ -18,6 +18,7 @@ from rho_document_collection_voice_agent.runtime import (
 )
 from rho_document_collection_voice_agent.session_reporting import (
     log_session_transcript,
+    register_follow_up_previews,
 )
 from rho_document_collection_voice_agent.settings import load_settings
 
@@ -36,10 +37,12 @@ async def rho_document_collection_demo(ctx: agents.JobContext) -> None:
         return
 
     session = create_agent_session(settings)
+    assistant = RhoDocumentCollectionAssistant()
+    register_follow_up_previews(ctx.job.id, assistant.follow_up_tool.previews)
 
     await session.start(
         room=ctx.room,
-        agent=RhoDocumentCollectionAssistant(),
+        agent=assistant,
         room_options=build_room_options(),
     )
     await play_initial_disclosure(session, INITIAL_DISCLOSURE)

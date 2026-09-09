@@ -1,0 +1,41 @@
+name: Rho response reliability regressions
+scenarios:
+  - label: Guided upload reaches receipt boundary
+    instructions: |-
+      Let Jenny finish each response. First say only, "Northstar Labs Incorporated."
+      Then ask Jenny to walk you through the upload one step at a time. Answer each
+      navigation question briefly. Report that the portal shows the upload as
+      complete and ask Jenny to confirm Rho received it. Accept her boundary, then
+      say, "No, that's everything," and let her end the call.
+    agent_expectations: |-
+      Jenny verifies the business, completes the Settings -> Business Documents
+      walkthrough, records the unverified upload claim, and never claims she can
+      independently confirm receipt.
+    tags:
+      flow: guided_upload_reliability
+    userdata: {}
+
+  - label: Existing Rho contact is captured immediately
+    instructions: |-
+      Let Jenny finish each response. First say only, "Northstar Labs Incorporated."
+      Then say you are already working with Lucas at Rho and have told him the
+      documents are being prepared. After her acknowledgment, say, "No, that's
+      everything," and let her end the call.
+    agent_expectations: |-
+      Jenny verifies the business and immediately records Lucas's name and the
+      prepared-document status. She does not claim an existing ticket was changed.
+    tags:
+      flow: existing_contact_reliability
+    userdata: {}
+
+  - label: Required-document answer completes
+    instructions: |-
+      Let Jenny finish each response. First say only, "Northstar Labs Incorporated."
+      Then ask which documents are missing, the deadline, and where to upload them.
+      After Jenny answers, say, "No, that's everything," and let her end the call.
+    agent_expectations: |-
+      Jenny verifies the business and completely states both documents, the Tuesday,
+      September 22, 2026 deadline, and Settings -> Business Documents before ending.
+    tags:
+      flow: document_summary_reliability
+    userdata: {}

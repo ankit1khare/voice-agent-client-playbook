@@ -28,6 +28,7 @@ from rho_document_collection_voice_agent.runtime import (
 )
 from rho_document_collection_voice_agent.session_reporting import (
     log_session_transcript,
+    register_follow_up_previews,
 )
 from rho_document_collection_voice_agent.settings import load_settings
 
@@ -85,9 +86,14 @@ async def rho_outbound_document_collection_demo(ctx: JobContext) -> None:
     )
 
     session = create_agent_session(settings)
+    assistant = RhoOutboundDocumentCollectionAssistant(
+        record=call.call_record,
+        request_id=call.request_id,
+    )
+    register_follow_up_previews(ctx.job.id, assistant.follow_up_tool.previews)
     await session.start(
         room=ctx.room,
-        agent=RhoOutboundDocumentCollectionAssistant(),
+        agent=assistant,
         room_options=build_room_options(),
     )
     if session.room_io is None:
@@ -177,7 +183,10 @@ async def rho_outbound_document_collection_demo(ctx: JobContext) -> None:
         await session.interrupt(force=True)
 
         if action is AMDAction.LEAVE_VOICEMAIL:
-            message = session.say(voicemail_message(), allow_interruptions=False)
+            message = session.say(
+                voicemail_message(call.call_record),
+                allow_interruptions=False,
+            )
             await message.wait_for_playout()
             _log_result(
                 CallResult(
