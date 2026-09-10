@@ -209,7 +209,7 @@ LARGE_FILE_HELP = (
 
 RHO_SUPPORT_PHONE_SPOKEN = "1-855-743-8746"
 RHO_SUPPORT_PHONE_E164 = "+18557438746"
-RHO_SUPPORT_EMAIL = "clientService@rho.co"
+RHO_SUPPORT_EMAIL = "service@rho.com"
 
 
 def render_demo_record(record: CentralizedCallRecord = DEMO_CALL_RECORD) -> str:

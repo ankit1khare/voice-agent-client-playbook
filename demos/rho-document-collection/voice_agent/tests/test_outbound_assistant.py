@@ -77,6 +77,9 @@ def test_runtime_voicemail_matches_rendered_demo_asset_text() -> None:
     assert "second quarter 2026 interim financials" in asset
     assert "Settings, then Business Documents" in asset
     assert "Tuesday, September 22" in asset
+    assert "service@rho.com" in asset
+    assert "clientService@rho.co" not in asset
+    assert "fictional account information" not in asset
     assert "Rho Demo Portal" not in asset
 
 

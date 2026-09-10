@@ -153,9 +153,8 @@ def voicemail_message(record: CentralizedCallRecord = DEMO_CALL_RECORD) -> str:
         f"awaiting {record.spoken_required_documents}. Please upload them through "
         f"the Rho platform under {record.spoken_upload_path} by "
         f"{deadline_without_year}. If you need an extension or have questions, "
-        f"email {RHO_SUPPORT_EMAIL} or call {RHO_SUPPORT_PHONE_SPOKEN}. This demo "
-        "uses fictional account information. Thank you for your attention, and "
-        "have a wonderful day."
+        f"email {RHO_SUPPORT_EMAIL} or call {RHO_SUPPORT_PHONE_SPOKEN}. Thank you "
+        "for your attention, and have a wonderful day."
     )
 
 

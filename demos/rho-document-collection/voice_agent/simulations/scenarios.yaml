@@ -146,7 +146,7 @@ scenarios:
       the call.
     agent_expectations: |-
       Jenny records the transfer request, explains that live transfer is unavailable
-      in this demo, and offers clientService@rho.co or 1-855-743-8746. She never says
+      in this demo, and offers service@rho.com or 1-855-743-8746. She never says
       a transfer occurred.
     tags:
       flow: transfer_preview
