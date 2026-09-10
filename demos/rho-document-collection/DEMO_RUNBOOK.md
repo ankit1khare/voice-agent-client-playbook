@@ -27,7 +27,7 @@ and `1-855-743-8746`.
 
 Jenny always starts with this fixed, non-interruptible disclosure:
 
-> Hi, I'm Jenny, Rho's AI assistant. This call may be recorded. I can help with
+> Hi, I'm Jenny, Rho's AI assistant. This call is being recorded. I can help with
 > document upload questions, but I can't provide financial advice. What business
 > are you calling about?
 
@@ -115,7 +115,7 @@ uv run rho-zendesk-preview \
 |---|---|
 | Opening | Exact disclosure mentions AI, possible recording, and no financial advice. |
 | Known business | Northstar returns both required documents and the September 22 deadline. |
-| Guided upload | Jenny gives one step at a time and asks what the caller sees. |
+| Guided upload | Jenny gives the documented Settings then Business Documents path one step at a time and asks what the caller sees. She may select an explicitly labeled Upload control but does not invent what other controls do. |
 | Caller-reported completion | Jenny acknowledges the report but does not claim Rho confirmed receipt. |
 | Extension request | Jenny captures the requested date, routes the preview to Underwriting, and does not promise approval. |
 | Deadline dispute | Jenny records the expected date and does not guess which deadline is correct. |
@@ -124,7 +124,7 @@ uv run rho-zendesk-preview \
 | Zendesk preview | The payload says `demo_only=true`, `write_performed=false`, and `zendesk_action=preview`. |
 | Interruption | After the fixed opening, ordinary caller speech stops Jenny within the VAD threshold. |
 | False interruption | If noise stops an interruptible response without producing a caller turn, Jenny resumes after two seconds. |
-| Interrupted workflow result | If a caller talks over a required status or boundary, Jenny finishes the material result before continuing. |
+| Interrupted workflow result | If a caller talks over a required status or boundary, Jenny keeps it pending and finishes it through the deterministic recovery tool; if the caller ends first, the end-call path plays it before goodbye. |
 | Inbound agent hangup | When the caller is done, Jenny says "Thank you for calling Rho. Have a great day.", waits for playout plus the carrier grace period, and disconnects the room. |
 | Outbound agent hangup | When Jenny's outbound call is done, she says "Thanks, goodbye for now. Have a great day.", waits for playout plus the carrier grace period, and disconnects the room. |
 | Session transcript | After the session closes, private cloud logs contain one structured `session_end_transcript` record with the timestamped chat history, tool calls, and complete follow-up preview payloads. |

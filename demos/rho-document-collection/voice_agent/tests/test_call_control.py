@@ -89,3 +89,28 @@ def test_outbound_tool_uses_outbound_closing(
     )
 
     assert "say:Thanks, goodbye for now. Have a great day.:False" in ctx.events
+
+
+def test_pending_required_result_plays_before_goodbye(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = FakeRunContext()
+    pending_messages = ["I recorded the update. Do you need anything else?"]
+
+    async def skip_sleep(delay: float) -> None:
+        del delay
+
+    def take_pending_message() -> str | None:
+        return pending_messages.pop() if pending_messages else None
+
+    monkeypatch.setattr(asyncio, "sleep", skip_sleep)
+    asyncio.run(
+        GracefulEndCallTool(
+            pending_message_provider=take_pending_message
+        )._speak_goodbye_and_shutdown(cast("RunContext", ctx))
+    )
+
+    assert ctx.events.index(
+        "say:I recorded the update. Do you need anything else?:False"
+    ) < ctx.events.index("say:Thank you for calling Rho. Have a great day.:False")
+    assert pending_messages == []

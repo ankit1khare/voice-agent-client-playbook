@@ -19,8 +19,8 @@ from rho_document_collection_voice_agent.workflow import FollowUpPreviewTool
 
 def test_outbound_disclosure_is_fixed_and_complete() -> None:
     assert OUTBOUND_DISCLOSURE == (
-        "Hi, this is Jenny, Rho's AI assistant. This call may be recorded. Is now "
-        "a good time for a quick call?"
+        "Hi, this is Jenny, Rho's AI assistant. Before we begin, please note that "
+        "this call is being recorded. Would this be a good time for a call?"
     )
 
 
@@ -43,7 +43,9 @@ def test_outbound_prompt_requires_authorization_before_document_details() -> Non
     assert "call share_document_request_details immediately" in instructions
     assert "today, later today, or tomorrow" in instructions
     assert "call record_deadline_dispute with that date immediately" in instructions
-    assert "required tool acknowledgment was interrupted" in instructions
+    assert "call finish_interrupted_result" in instructions
+    assert "only documented navigation path" in instructions
+    assert "Never guess what any other button" in instructions
     assert "cannot" in instructions and "independently confirm receipt" in instructions
     assert "financial, legal, tax, underwriting, or credit advice" in instructions
 

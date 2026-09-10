@@ -108,12 +108,21 @@ class FollowUpPreviewTool(Toolset):
         self._request_id = request_id
         self._verification_mode = verification_mode
         self._access_granted = False
+        self._pending_spoken_result: str | None = None
+        self._pending_end_call_result: str | None = None
         self.previews: list[dict[str, Any]] = []
 
     @property
     def access_granted(self) -> bool:
         """Return whether this call has passed its configured access gate."""
         return self._access_granted
+
+    def take_pending_spoken_result(self) -> str | None:
+        """Return and clear a required result that must precede call shutdown."""
+        message = self._pending_end_call_result or self._pending_spoken_result
+        self._pending_spoken_result = None
+        self._pending_end_call_result = None
+        return message
 
     @function_tool(
         name="verify_business_name",
@@ -138,8 +147,9 @@ class FollowUpPreviewTool(Toolset):
         if self._access_granted:
             await self._disable_verification_tool(ctx, "verify_business_name")
             return (
-                "Business verified. You may now discuss this record and use its "
-                "follow-up tools."
+                "Business verified. Do not volunteer the account record. If this "
+                "turn contained only the business name, ask how you can help and "
+                "wait. Otherwise, handle the request or status already provided."
             )
         return (
             "Business not verified. Do not reveal record details or use another "
@@ -196,6 +206,22 @@ class FollowUpPreviewTool(Toolset):
         return preview
 
     @function_tool(
+        name="finish_interrupted_result",
+        description=(
+            "Finish a required workflow status or boundary that the caller "
+            "interrupted. Call this before any other response or tool when an "
+            "interrupted workflow tool directs you to do so."
+        ),
+        flags=ToolFlag.IGNORE_ON_ENTER,
+    )
+    async def finish_interrupted_result(self, ctx: RunContext) -> str | None:
+        """Finish and clear the exact pending workflow result."""
+        message = self._pending_spoken_result
+        if message is None:
+            return "No required workflow result is waiting to be finished."
+        return await self._speak_required_result(ctx, message)
+
+    @function_tool(
         name="share_document_request_details",
         description=(
             "After access verification, speak every required document, the exact "
@@ -207,6 +233,7 @@ class FollowUpPreviewTool(Toolset):
     async def share_document_request_details(self, ctx: RunContext) -> str | None:
         """Speak the complete reminder from validated call data."""
         self._require_access()
+        self._require_no_pending_result()
         if self._verification_mode == "authorized_listener":
             closing_question = (
                 "Do you expect to submit the documents by then, or do you need an "
@@ -216,12 +243,18 @@ class FollowUpPreviewTool(Toolset):
             closing_question = (
                 "Would you like me to walk you through the upload one step at a time?"
             )
-        return await _speak_tool_result(
-            ctx,
+        message = (
             f"Rho is still awaiting {self._record.spoken_required_documents}. "
             f"The submission deadline is {self._record.spoken_deadline}. You can "
             f"upload the documents under {self._record.spoken_upload_path}. "
-            f"{closing_question}",
+            f"{closing_question}"
+        )
+        if await _speak_tool_result(ctx, message):
+            return None
+        return (
+            "The document reminder was interrupted. Respond directly to the "
+            "caller's current request or status. Do not replay the reminder unless "
+            "the caller asks."
         )
 
     @function_tool(
@@ -261,12 +294,13 @@ class FollowUpPreviewTool(Toolset):
     ) -> str | None:
         """Record a client's promised upload date."""
         self._require_access()
+        self._require_no_pending_result()
         promised_date = _required_detail(promised_upload_date, "promised_upload_date")
         self.record_preview(
             ConversationDisposition.PROMISE_TO_UPLOAD,
             promised_upload_date=promised_date,
         )
-        return await _speak_tool_result(
+        return await self._speak_required_result(
             ctx,
             f"I've recorded your upload commitment for {promised_date}. I'll pass "
             "that timing to the document collection team. Do you need anything else?",
@@ -287,6 +321,7 @@ class FollowUpPreviewTool(Toolset):
     ) -> str | None:
         """Record an extension request for Underwriting review."""
         self._require_access()
+        self._require_no_pending_result()
         requested_date = _required_detail(
             requested_submission_date, "requested_submission_date"
         )
@@ -294,7 +329,7 @@ class FollowUpPreviewTool(Toolset):
             ConversationDisposition.EXTENSION_REQUESTED,
             requested_submission_date=requested_date,
         )
-        return await _speak_tool_result(
+        return await self._speak_required_result(
             ctx,
             f"I've recorded your extension request through {requested_date} for "
             "Underwriting to review. It is not approved yet. Do you need anything "
@@ -312,8 +347,9 @@ class FollowUpPreviewTool(Toolset):
     async def record_prior_upload_claim(self, ctx: RunContext) -> str | None:
         """Record the client's unverified upload report."""
         self._require_access()
+        self._require_no_pending_result()
         self.record_preview(ConversationDisposition.PRIOR_UPLOAD_CLAIMED)
-        return await _speak_tool_result(
+        return await self._speak_required_result(
             ctx,
             "I've recorded that you reported the upload complete for Client Service "
             "to check. I can't independently confirm receipt. Do you need anything "
@@ -335,6 +371,7 @@ class FollowUpPreviewTool(Toolset):
     ) -> str | None:
         """Record a disputed deadline for Underwriting review."""
         self._require_access()
+        self._require_no_pending_result()
         expected_deadline = _required_detail(
             client_expected_deadline, "client_expected_deadline"
         )
@@ -342,7 +379,7 @@ class FollowUpPreviewTool(Toolset):
             ConversationDisposition.DEADLINE_DISPUTED,
             client_expected_deadline=expected_deadline,
         )
-        return await _speak_tool_result(
+        return await self._speak_required_result(
             ctx,
             "Rho will need to check the deadline discrepancy. I can't confirm which "
             f"date is correct. I've recorded that you expected {expected_deadline} "
@@ -364,12 +401,13 @@ class FollowUpPreviewTool(Toolset):
     ) -> str | None:
         """Record a request to review the monthly requirement."""
         self._require_access()
+        self._require_no_pending_result()
         change_reason = _required_detail(reason, "reason")
         self.record_preview(
             ConversationDisposition.REQUIREMENT_CHANGE_REQUESTED,
             reason=change_reason,
         )
-        return await _speak_tool_result(
+        return await self._speak_required_result(
             ctx,
             "I've recorded your reason for the appropriate team to review. No "
             "requirement has been changed. Do you need anything else?",
@@ -391,6 +429,7 @@ class FollowUpPreviewTool(Toolset):
     ) -> str | None:
         """Record an existing human support relationship."""
         self._require_access()
+        self._require_no_pending_result()
         contact_name = _required_detail(rho_contact_name, "rho_contact_name")
         latest_status = _required_detail(status_update, "status_update")
         self.record_preview(
@@ -398,7 +437,7 @@ class FollowUpPreviewTool(Toolset):
             rho_contact_name=contact_name,
             status_update=latest_status,
         )
-        return await _speak_tool_result(
+        return await self._speak_required_result(
             ctx,
             f"I've recorded that you're working with {contact_name} and that "
             f"{latest_status}. I didn't update any existing case. Do you need "
@@ -420,11 +459,12 @@ class FollowUpPreviewTool(Toolset):
     ) -> str | None:
         """Exercise the disabled transfer branch and record the request."""
         self._require_access()
+        self._require_no_pending_result()
         self.record_preview(
             ConversationDisposition.HUMAN_TRANSFER_REQUESTED,
             reason=reason,
         )
-        return await _speak_tool_result(
+        return await self._speak_required_result(
             ctx,
             "Live transfer is unavailable in this demo. You can call "
             f"{RHO_SUPPORT_PHONE_SPOKEN} or email {RHO_SUPPORT_EMAIL}. I've recorded "
@@ -442,8 +482,9 @@ class FollowUpPreviewTool(Toolset):
     async def record_secure_link_request(self, ctx: RunContext) -> str | None:
         """Record a large-file help request for Client Service."""
         self._require_access()
+        self._require_no_pending_result()
         self.record_preview(ConversationDisposition.SECURE_LINK_REQUESTED)
-        return await _speak_tool_result(
+        return await self._speak_required_result(
             ctx,
             "I've recorded a secure upload link request for Client Service. Client "
             "Service must provide an approved link; no link was sent. Do you need "
@@ -457,6 +498,13 @@ class FollowUpPreviewTool(Toolset):
                 "configured identity or authorization check first."
             )
 
+    def _require_no_pending_result(self) -> None:
+        if self._pending_spoken_result is not None:
+            raise ToolError(
+                "A required caller-facing result is unfinished. Call "
+                "finish_interrupted_result before any other workflow tool."
+            )
+
     async def _disable_verification_tool(
         self,
         ctx: RunContext,
@@ -467,6 +515,23 @@ class FollowUpPreviewTool(Toolset):
         if ctx is not None:
             current_agent = ctx.session.current_agent
             await current_agent.update_tools(current_agent.tools)
+
+    async def _speak_required_result(
+        self,
+        ctx: RunContext,
+        message: str,
+    ) -> str | None:
+        """Speak a required result and retain it until playout completes."""
+        if await _speak_tool_result(ctx, message):
+            self._pending_spoken_result = None
+            self._pending_end_call_result = None
+            return None
+        self._pending_spoken_result = message
+        self._pending_end_call_result = _without_optional_follow_up_question(message)
+        return (
+            "The required caller-facing result was interrupted. Call "
+            "finish_interrupted_result before any other response or tool."
+        )
 
 
 def build_follow_up_preview_tool(
@@ -506,14 +571,14 @@ def _business_key(value: str) -> str:
     return "".join(words)
 
 
-async def _speak_tool_result(ctx: RunContext, message: str) -> str | None:
-    """Speak a grounded result and request recovery only after an interruption."""
+async def _speak_tool_result(ctx: RunContext, message: str) -> bool:
+    """Speak a grounded result and report whether its playout completed."""
     await ctx.wait_for_playout()
     speech = ctx.session.say(message, allow_interruptions=True)
     await speech.wait_for_playout()
-    if speech.interrupted:
-        return (
-            "The required caller-facing result was interrupted. In your next reply, "
-            f"first state this result completely: {message}"
-        )
-    return None
+    return not speech.interrupted
+
+
+def _without_optional_follow_up_question(message: str) -> str:
+    """Remove an optional follow-up question before a caller-requested shutdown."""
+    return message.removesuffix(" Do you need anything else?")

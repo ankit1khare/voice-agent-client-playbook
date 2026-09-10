@@ -16,7 +16,7 @@ from rho_document_collection_voice_agent.workflow import FollowUpPreviewTool
 
 def test_disclosure_is_exact_and_complete() -> None:
     assert INITIAL_DISCLOSURE == (
-        "Hi, I'm Jenny, Rho's AI assistant. This call may be recorded. I can help "
+        "Hi, I'm Jenny, Rho's AI assistant. This call is being recorded. I can help "
         "with document upload questions, but I can't provide financial advice. "
         "What business are you calling about?"
     )
@@ -38,7 +38,10 @@ def test_instructions_define_the_inbound_rho_demo() -> None:
     assert "including details given in the same turn" in instructions
     assert "call record_deadline_dispute with that date immediately" in instructions
     assert "Do not ask for it again" in instructions
-    assert "required tool acknowledgment was interrupted" in instructions
+    assert "call finish_interrupted_result" in instructions
+    assert "never call share_document_request_details" in instructions
+    assert "only documented navigation path" in instructions
+    assert "Never guess what any other button" in instructions
 
 
 def test_instructions_ground_upload_help_and_walkthrough() -> None:

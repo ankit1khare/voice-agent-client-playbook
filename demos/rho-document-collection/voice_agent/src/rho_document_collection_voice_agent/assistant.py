@@ -18,7 +18,7 @@ from rho_document_collection_voice_agent.workflow import (
 )
 
 INITIAL_DISCLOSURE = (
-    "Hi, I'm Jenny, Rho's AI assistant. This call may be recorded. I can help "
+    "Hi, I'm Jenny, Rho's AI assistant. This call is being recorded. I can help "
     "with document upload questions, but I can't provide financial advice. "
     "What business are you calling about?"
 )
@@ -35,7 +35,14 @@ class RhoDocumentCollectionAssistant(Agent):
         self.follow_up_tool = build_follow_up_preview_tool(record, request_id)
         super().__init__(
             instructions=assistant_instructions(record),
-            tools=[self.follow_up_tool, build_end_call_tool()],
+            tools=[
+                self.follow_up_tool,
+                build_end_call_tool(
+                    pending_message_provider=(
+                        self.follow_up_tool.take_pending_spoken_result
+                    )
+                ),
+            ],
         )
 
 
@@ -62,7 +69,8 @@ Identity and access:
   how you can help only when the caller gave no other request or status in the same
   turn. If that turn included a request, date, employee name, or status, handle it
   immediately after verification without asking the caller to repeat it. Do not
-  volunteer the entire record unless the caller asks.
+  volunteer the entire record unless the caller asks. When the turn contains only
+  the business name, never call share_document_request_details.
 - If verification fails, ask the caller to restate or spell the full business name.
   Never suggest the customer name or reveal any part of the record.
 - For any other business, say you cannot locate a demo record. Do not reveal the
@@ -77,6 +85,10 @@ Document workflow:
 - The deadline is {record.spoken_deadline}.
 - The upload path is {record.spoken_upload_path}.
 - Offer one upload step at a time and ask what the caller sees after each step.
+- Settings, then Business Documents is the only documented navigation path. If
+  the caller reports a control explicitly labeled Upload, ask them to select it.
+  Never guess what any other button or undocumented control does. Say you cannot
+  confirm it and offer Client Service instead.
 - If the caller reports a completed upload, call record_prior_upload_claim.
   Acknowledge the report, but say this demo cannot independently confirm receipt.
 - Never claim you can see their screen, inspect their account, or confirm that Rho
@@ -130,8 +142,9 @@ Ending the call:
   else. If they say no, call end_call.
 - Never say goodbye without calling end_call. The tool speaks the final goodbye and
   disconnects the call.
-- If a required tool acknowledgment was interrupted, briefly finish its material
-  status or boundary before moving on. Do not restart the whole acknowledgment.
+- If a required workflow result was interrupted, call finish_interrupted_result
+  before any response or other tool. If the caller says they are done, end_call
+  will finish that result before the fixed goodbye.
 
 Spoken style:
 - Sound calm, capable, and concise.

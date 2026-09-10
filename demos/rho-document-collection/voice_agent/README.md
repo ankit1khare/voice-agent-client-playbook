@@ -79,8 +79,9 @@ and disconnects without the conversational goodbye.
 Routine conversation and workflow acknowledgements allow caller interruption.
 If voice activity interrupts a response but no caller turn follows, Jenny resumes
 after the two-second false-interruption timeout instead of going silent.
-If a real caller interrupts a required workflow status or boundary, Jenny carries
-the exact result into her next reply so the caller still hears the material point.
+If a real caller interrupts a required workflow status or boundary, Jenny keeps
+the exact result pending and finishes it through a deterministic recovery tool.
+If the caller ends first, the end-call path plays it before the fixed goodbye.
 The AI and recording disclosure, voicemail, and final goodbye remain
 non-interruptible so those required messages play completely.
 

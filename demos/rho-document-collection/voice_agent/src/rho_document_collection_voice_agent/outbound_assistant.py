@@ -22,10 +22,10 @@ from rho_document_collection_voice_agent.workflow import (
 
 
 def outbound_disclosure() -> str:
-    """Return the fixed privacy-safe opening for a human answer."""
+    """Return the fixed Rho-approved opening for a human answer."""
     return (
-        "Hi, this is Jenny, Rho's AI assistant. This call may be recorded. "
-        "Is now a good time for a quick call?"
+        "Hi, this is Jenny, Rho's AI assistant. Before we begin, please note "
+        "that this call is being recorded. Would this be a good time for a call?"
     )
 
 
@@ -49,7 +49,10 @@ class RhoOutboundDocumentCollectionAssistant(Agent):
             instructions=outbound_assistant_instructions(record),
             tools=[
                 self.follow_up_tool,
-                build_end_call_tool(OUTBOUND_FINAL_GOODBYE),
+                build_end_call_tool(
+                    OUTBOUND_FINAL_GOODBYE,
+                    self.follow_up_tool.take_pending_spoken_result,
+                ),
             ],
         )
 
@@ -92,6 +95,10 @@ Document reminder:
 - Give the real Rho upload path from this synthetic record:
   {record.spoken_upload_path}.
 - Offer one upload step at a time and ask what the listener sees after each step.
+- Settings, then Business Documents is the only documented navigation path. If
+  the listener reports a control explicitly labeled Upload, ask them to select it.
+  Never guess what any other button or undocumented control does. Say you cannot
+  confirm it and offer Client Service instead.
 
 Required follow-up tools:
 - If the listener promises to upload, call record_upload_commitment with the date or
@@ -138,8 +145,9 @@ Ending the call:
   anything else. If they say no, call end_call.
 - Never say goodbye without calling end_call. The tool speaks the final goodbye
   and disconnects the call.
-- If a required tool acknowledgment was interrupted, briefly finish its material
-  status or boundary before moving on. Do not restart the whole acknowledgment.
+- If a required workflow result was interrupted, call finish_interrupted_result
+  before any response or other tool. If the caller says they are done, end_call
+  will finish that result before the fixed goodbye.
 
 Spoken style:
 - Sound calm, capable, and concise.

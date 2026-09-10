@@ -302,8 +302,79 @@ def test_interrupted_tool_result_requests_complete_recovery() -> None:
 
     assert result is not None
     assert result.startswith("The required caller-facing result was interrupted.")
-    assert "Live transfer is unavailable in this demo" in result
-    assert "clientservice@rho.co" in result
+    assert "finish_interrupted_result" in result
+    pending = tool.take_pending_spoken_result()
+    assert pending is not None
+    assert "Live transfer is unavailable in this demo" in pending
+    assert "clientservice@rho.co" in pending
+    assert tool.take_pending_spoken_result() is None
+
+
+def test_interrupted_document_reminder_does_not_block_the_next_intent() -> None:
+    tool = FollowUpPreviewTool(DEMO_CALL_RECORD, "demo-interrupted-reminder")
+    interrupted_ctx = _FakeRunContext(interrupt_next_speech=True)
+    completed_ctx = _FakeRunContext()
+    verify_business_name = cast(Any, tool.verify_business_name)
+    share_document_request_details = cast(Any, tool.share_document_request_details)
+    record_prior_upload_claim = cast(Any, tool.record_prior_upload_claim)
+
+    asyncio.run(verify_business_name(None, "Northstar Labs"))
+    result = asyncio.run(share_document_request_details(interrupted_ctx))
+    asyncio.run(record_prior_upload_claim(completed_ctx))
+
+    assert result is not None
+    assert result.startswith("The document reminder was interrupted.")
+    assert tool.take_pending_spoken_result() is None
+    assert tool.previews[-1]["conversation_disposition"] == "prior_upload_claimed"
+
+
+def test_end_call_recovery_omits_optional_follow_up_question() -> None:
+    tool = FollowUpPreviewTool(DEMO_CALL_RECORD, "demo-end-call-recovery")
+    interrupted_ctx = _FakeRunContext(interrupt_next_speech=True)
+    verify_business_name = cast(Any, tool.verify_business_name)
+    request_human_transfer = cast(Any, tool.request_human_transfer)
+
+    asyncio.run(verify_business_name(None, "Northstar Labs"))
+    asyncio.run(request_human_transfer(interrupted_ctx, "More questions"))
+
+    pending = tool.take_pending_spoken_result()
+    assert pending is not None
+    assert pending.endswith("I've recorded your request for Client Service.")
+    assert "Do you need anything else?" not in pending
+
+
+def test_finish_interrupted_result_replays_and_clears_pending_message() -> None:
+    tool = FollowUpPreviewTool(DEMO_CALL_RECORD, "demo-finish-interrupted")
+    interrupted_ctx = _FakeRunContext(interrupt_next_speech=True)
+    completed_ctx = _FakeRunContext()
+    verify_business_name = cast(Any, tool.verify_business_name)
+    request_human_transfer = cast(Any, tool.request_human_transfer)
+    finish_interrupted_result = cast(Any, tool.finish_interrupted_result)
+
+    asyncio.run(verify_business_name(None, "Northstar Labs"))
+    asyncio.run(request_human_transfer(interrupted_ctx, "More questions"))
+    result = asyncio.run(finish_interrupted_result(completed_ctx))
+
+    assert result is None
+    assert completed_ctx.session.messages[-1].startswith(
+        "Live transfer is unavailable in this demo"
+    )
+    assert tool.take_pending_spoken_result() is None
+
+
+def test_pending_result_blocks_other_workflow_tools() -> None:
+    tool = FollowUpPreviewTool(DEMO_CALL_RECORD, "demo-pending-gate")
+    interrupted_ctx = _FakeRunContext(interrupt_next_speech=True)
+    verify_business_name = cast(Any, tool.verify_business_name)
+    request_human_transfer = cast(Any, tool.request_human_transfer)
+    record_secure_link_request = cast(Any, tool.record_secure_link_request)
+
+    asyncio.run(verify_business_name(None, "Northstar Labs"))
+    asyncio.run(request_human_transfer(interrupted_ctx, "More questions"))
+
+    with pytest.raises(ToolError, match="finish_interrupted_result"):
+        asyncio.run(record_secure_link_request(_FakeRunContext()))
+    assert len(tool.previews) == 1
 
 
 @pytest.mark.parametrize(

@@ -1,6 +1,7 @@
 """Shared call-ending behavior for the Rho demo agents."""
 
 import asyncio
+from collections.abc import Callable
 
 from livekit.agents import RunContext, function_tool, get_job_context
 from livekit.agents.llm import ToolFlag, Toolset
@@ -25,9 +26,14 @@ is unclear. Never merely say goodbye without using this tool.
 class GracefulEndCallTool(Toolset):
     """End a call only after the final spoken audio has cleared the phone line."""
 
-    def __init__(self, final_goodbye: str = INBOUND_FINAL_GOODBYE) -> None:
+    def __init__(
+        self,
+        final_goodbye: str = INBOUND_FINAL_GOODBYE,
+        pending_message_provider: Callable[[], str | None] | None = None,
+    ) -> None:
         super().__init__(id="end_call")
         self._final_goodbye = final_goodbye
+        self._pending_message_provider = pending_message_provider
 
     @function_tool(
         name="end_call",
@@ -42,6 +48,14 @@ class GracefulEndCallTool(Toolset):
         ctx.disallow_interruptions()
         ctx.session.once("close", self._on_session_close)
         await ctx.wait_for_playout()
+        if self._pending_message_provider is not None:
+            pending_message = self._pending_message_provider()
+            if pending_message is not None:
+                pending = ctx.session.say(
+                    pending_message,
+                    allow_interruptions=False,
+                )
+                await pending.wait_for_playout()
         goodbye = ctx.session.say(self._final_goodbye, allow_interruptions=False)
         await goodbye.wait_for_playout()
         await asyncio.sleep(GOODBYE_DISCONNECT_GRACE_SECONDS)
@@ -59,6 +73,7 @@ class GracefulEndCallTool(Toolset):
 
 def build_end_call_tool(
     final_goodbye: str = INBOUND_FINAL_GOODBYE,
+    pending_message_provider: Callable[[], str | None] | None = None,
 ) -> GracefulEndCallTool:
     """Return the Rho call-ending tool."""
-    return GracefulEndCallTool(final_goodbye)
+    return GracefulEndCallTool(final_goodbye, pending_message_provider)
