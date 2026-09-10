@@ -47,6 +47,15 @@ class AMDAction(str, Enum):
     END_UNAVAILABLE = "end_unavailable"
 
 
+class ScreeningResolution(str, Enum):
+    """Resolution observed after a phone-screening service answers first."""
+
+    WAIT = "wait"
+    HUMAN = "human"
+    VOICEMAIL = "voicemail"
+    UNAVAILABLE = "unavailable"
+
+
 @dataclass(frozen=True, slots=True)
 class OutboundCallRequest:
     """A single authorized call to synthetic demo data."""
@@ -206,6 +215,49 @@ def amd_action_for_category(
     if category == "machine-unavailable":
         return AMDAction.END_UNAVAILABLE
     raise ValueError(f"unsupported AMD category: {category}")
+
+
+def screening_resolution_for_transcript(transcript: str) -> ScreeningResolution:
+    """Classify audio heard after Jenny answers a phone-screening prompt."""
+    normalized = " ".join(transcript.casefold().split()).strip(" .,!?:;")
+
+    cannot_leave_message = (
+        "mailbox is full",
+        "mailbox has not been set up",
+        "mailbox hasn't been set up",
+        "cannot accept messages",
+        "can't accept messages",
+        "unable to take your message",
+    )
+    if any(phrase in normalized for phrase in cannot_leave_message):
+        return ScreeningResolution.UNAVAILABLE
+
+    voicemail_invitation = (
+        "after the tone",
+        "after the beep",
+        "leave a message",
+        "leave an additional message",
+        "record your message",
+    )
+    if any(phrase in normalized for phrase in voicemail_invitation):
+        return ScreeningResolution.VOICEMAIL
+
+    screening_prompts = (
+        "please stay on the line",
+        "please hold",
+        "stay on the line",
+        "state your name",
+        "record your name",
+        "reason for calling",
+        "check if the person is available",
+        "checking if the person is available",
+    )
+    if normalized in {"thanks", "thank you"} or any(
+        phrase in normalized for phrase in screening_prompts
+    ):
+        return ScreeningResolution.WAIT
+
+    return ScreeningResolution.HUMAN
 
 
 def _required_string(payload: dict[str, Any], key: str) -> str:

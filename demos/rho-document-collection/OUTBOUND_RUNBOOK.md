@@ -22,6 +22,11 @@ Pre-answer SIP failures map to `busy_or_rejected`, `no_answer`, or `dial_failed`
 Every attempt writes a structured `outbound_call_result` record to the worker log.
 The record omits the destination number.
 
+After an authorized call-screening prompt, the worker holds normal conversation
+replies until the service connects a person, declares that messages are
+unavailable, or invites a voicemail. A voicemail invitation plays the full fixed
+voicemail and ends without the live-call goodbye.
+
 Live conversations can also write `zendesk_ticket_preview` log records for
 business dispositions. These records always contain `demo_only=true`,
 `write_performed=false`, and `zendesk_action=preview`. They make no Zendesk
@@ -160,8 +165,9 @@ number continued to target the same agent through `SDR_z3WWrFFhrVr7`.
 ## Turn-taking and hangup
 
 Jenny uses VAD barge-in with a 0.3-second minimum. Once the disclosure finishes,
-ordinary caller speech stops the current response. The fixed disclosure and
-voicemail message remain non-interruptible.
+ordinary caller speech stops normal replies and deterministic workflow
+acknowledgements. The fixed disclosure, voicemail message, and final goodbye
+remain non-interruptible.
 
 Both inbound and outbound assistants have an end-call tool. When the caller says
 goodbye, says they need nothing else, or asks to end the call, Jenny says

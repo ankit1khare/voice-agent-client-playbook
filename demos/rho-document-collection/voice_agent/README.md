@@ -70,6 +70,15 @@ to the fictional Northstar Labs record and accepts another validated synthetic
 record. Source defaults remain disabled; the cloud deployment holds its runtime
 switch and test-trunk ID as LiveKit secrets.
 
+If a phone-screening service answers first, the worker keeps normal agent replies
+paused while it waits for the screening result. A human connection resumes the
+conversation. A later voicemail invitation plays the complete fixed voicemail
+and disconnects without the conversational goodbye.
+
+Routine conversation and workflow acknowledgements allow caller interruption.
+The AI and recording disclosure, voicemail, and final goodbye remain
+non-interruptible so those required messages play completely.
+
 The dispatcher always rejects Rho Client Service (`+1 855-743-8746`) as a test
 destination, including when execution is enabled.
 

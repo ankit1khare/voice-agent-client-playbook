@@ -5,7 +5,13 @@ import logging
 import os
 
 from livekit import api
-from livekit.agents import AMD, AgentServer, JobContext
+from livekit.agents import (
+    AMD,
+    AgentServer,
+    AgentSession,
+    JobContext,
+    UserInputTranscribedEvent,
+)
 
 from rho_document_collection_voice_agent.outbound import (
     OUTBOUND_AGENT_NAME,
@@ -13,9 +19,11 @@ from rho_document_collection_voice_agent.outbound import (
     CallOutcome,
     CallResult,
     OutboundCallRequest,
+    ScreeningResolution,
     amd_action_for_category,
     build_sip_participant_request,
     call_outcome_for_sip_status,
+    screening_resolution_for_transcript,
 )
 from rho_document_collection_voice_agent.outbound_assistant import (
     OUTBOUND_DISCLOSURE,
@@ -38,6 +46,7 @@ server = AgentServer()
 
 DIAL_TIMEOUT_SECONDS = 45.0
 PARTICIPANT_JOIN_TIMEOUT_SECONDS = 10.0
+SCREENING_HANDOFF_TIMEOUT_SECONDS = 45.0
 
 
 @server.rtc_session(
@@ -109,6 +118,7 @@ async def rho_outbound_document_collection_demo(ctx: JobContext) -> None:
 
     session.room_io.set_participant(call.participant_identity)
 
+    continue_after_screening = False
     async with AMD(
         session,
         participant_identity=call.participant_identity,
@@ -199,35 +209,144 @@ async def rho_outbound_document_collection_demo(ctx: JobContext) -> None:
             return
 
         if action is AMDAction.CONTINUE_IVR_SCREENING:
-            screening_message = session.say(
-                OUTBOUND_DISCLOSURE,
-                allow_interruptions=False,
+            continue_after_screening = await _handle_ivr_screening(
+                ctx,
+                session,
+                call,
             )
-            await screening_message.wait_for_playout()
+            if not continue_after_screening:
+                return
+        elif action is AMDAction.END_IVR:
             _log_result(
                 CallResult(
                     request_id=call.request_id,
-                    outcome=CallOutcome.IVR_SCREENING_CONTINUED,
+                    outcome=CallOutcome.IVR_DETECTED,
                     amd_category=category,
                 )
             )
+            ctx.shutdown("IVR detected")
+            return
+        else:
+            _log_result(
+                CallResult(
+                    request_id=call.request_id,
+                    outcome=CallOutcome.MAILBOX_UNAVAILABLE,
+                    amd_category=category,
+                )
+            )
+            ctx.shutdown("mailbox unavailable")
             return
 
-        if action is AMDAction.END_IVR:
-            outcome = CallOutcome.IVR_DETECTED
-            reason = "IVR detected"
-        else:
-            outcome = CallOutcome.MAILBOX_UNAVAILABLE
-            reason = "mailbox unavailable"
+    if continue_after_screening:
+        session.generate_reply()
+
+
+async def _handle_ivr_screening(
+    ctx: JobContext,
+    session: AgentSession,
+    call: OutboundCallRequest,
+) -> bool:
+    """Wait for call screening to connect a human or hand off to voicemail."""
+    transcripts: asyncio.Queue[str] = asyncio.Queue()
+
+    def capture_transcript(event: UserInputTranscribedEvent) -> None:
+        if event.is_final and event.transcript.strip():
+            transcripts.put_nowait(event.transcript)
+
+    session.on("user_input_transcribed", capture_transcript)
+    try:
+        screening_message = session.say(
+            OUTBOUND_DISCLOSURE,
+            allow_interruptions=False,
+        )
+        await screening_message.wait_for_playout()
+        _log_result(
+            CallResult(
+                request_id=call.request_id,
+                outcome=CallOutcome.IVR_SCREENING_CONTINUED,
+                amd_category="machine-ivr",
+            )
+        )
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + SCREENING_HANDOFF_TIMEOUT_SECONDS
+        while True:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                resolution = ScreeningResolution.WAIT
+                break
+            try:
+                transcript = await asyncio.wait_for(
+                    transcripts.get(),
+                    timeout=remaining,
+                )
+            except TimeoutError:
+                resolution = ScreeningResolution.WAIT
+                break
+
+            resolution = screening_resolution_for_transcript(transcript)
+            logger.info(
+                "phone screening transition",
+                extra={
+                    "request_id": call.request_id,
+                    "screening_resolution": resolution.value,
+                },
+            )
+            if resolution is not ScreeningResolution.WAIT:
+                break
+
+        if resolution is ScreeningResolution.HUMAN:
+            _log_result(
+                CallResult(
+                    request_id=call.request_id,
+                    outcome=CallOutcome.HUMAN_ANSWERED,
+                    amd_category="human-after-ivr",
+                    detail="phone screening connected the authorized destination",
+                )
+            )
+            return True
+
+        await session.interrupt(force=True)
+        if resolution is ScreeningResolution.VOICEMAIL:
+            message = session.say(
+                voicemail_message(call.call_record),
+                allow_interruptions=False,
+            )
+            await message.wait_for_playout()
+            _log_result(
+                CallResult(
+                    request_id=call.request_id,
+                    outcome=CallOutcome.VOICEMAIL_LEFT,
+                    amd_category="machine-vm-after-ivr",
+                    detail="phone screening handed the call to voicemail",
+                )
+            )
+            ctx.shutdown("voicemail left after IVR screening")
+            return False
+
+        if resolution is ScreeningResolution.UNAVAILABLE:
+            _log_result(
+                CallResult(
+                    request_id=call.request_id,
+                    outcome=CallOutcome.MAILBOX_UNAVAILABLE,
+                    amd_category="machine-unavailable-after-ivr",
+                )
+            )
+            ctx.shutdown("mailbox unavailable after IVR screening")
+            return False
 
         _log_result(
             CallResult(
                 request_id=call.request_id,
-                outcome=outcome,
-                amd_category=category,
+                outcome=CallOutcome.IVR_DETECTED,
+                amd_category="machine-ivr",
+                detail="phone screening did not resolve before timeout",
             )
         )
-        ctx.shutdown(reason)
+        ctx.shutdown("phone screening timed out")
+        return False
+    finally:
+        session.off("user_input_transcribed", capture_transcript)
 
 
 def _outbound_calls_enabled() -> bool:

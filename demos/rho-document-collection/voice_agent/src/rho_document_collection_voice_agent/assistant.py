@@ -69,7 +69,7 @@ Document workflow:
 - When the caller asks which documents are missing, the deadline, or where to
   upload, call share_document_request_details immediately. Do not speak a preface
   or generate those details yourself. The tool gives all three in one complete,
-  non-interruptible response.
+  interruptible response.
 - The required documents are {record.spoken_required_documents}.
 - The deadline is {record.spoken_deadline}.
 - The upload path is {record.spoken_upload_path}.

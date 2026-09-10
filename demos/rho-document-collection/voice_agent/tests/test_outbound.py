@@ -10,10 +10,12 @@ from rho_document_collection_voice_agent.outbound import (
     CallOutcome,
     CallResult,
     OutboundCallRequest,
+    ScreeningResolution,
     amd_action_for_category,
     build_sip_participant_request,
     call_outcome_for_sip_status,
     is_outbound_job_metadata,
+    screening_resolution_for_transcript,
 )
 
 
@@ -144,6 +146,33 @@ def test_amd_can_continue_through_authorized_call_screening() -> None:
         amd_action_for_category("machine-ivr", allow_ivr_screening=True)
         is AMDAction.CONTINUE_IVR_SCREENING
     )
+
+
+@pytest.mark.parametrize(
+    ("transcript", "resolution"),
+    [
+        ("Thanks.", ScreeningResolution.WAIT),
+        ("Please stay on the line.", ScreeningResolution.WAIT),
+        (
+            "Please state your name and reason for calling.",
+            ScreeningResolution.WAIT,
+        ),
+        ("Hello, this is Ankit.", ScreeningResolution.HUMAN),
+        (
+            "This person is not available. Leave an additional message after the tone.",
+            ScreeningResolution.VOICEMAIL,
+        ),
+        (
+            "The mailbox is full and cannot accept messages.",
+            ScreeningResolution.UNAVAILABLE,
+        ),
+    ],
+)
+def test_phone_screening_transition_mapping(
+    transcript: str,
+    resolution: ScreeningResolution,
+) -> None:
+    assert screening_resolution_for_transcript(transcript) is resolution
 
 
 def test_call_result_is_structured_and_has_no_phone_number() -> None:

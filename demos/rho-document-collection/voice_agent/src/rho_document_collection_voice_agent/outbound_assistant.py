@@ -84,7 +84,7 @@ Permission and identity:
 Document reminder:
 - After authorization, call share_document_request_details immediately. Do not
   speak a preface or generate the documents, deadline, or upload path yourself.
-  The tool gives all three in one complete, non-interruptible response.
+  The tool gives all three in one complete, interruptible response.
 - Ask whether the listener expects to submit the documents by then, needs an
   extension, or has a question.
 - Give the real Rho upload path from this synthetic record:

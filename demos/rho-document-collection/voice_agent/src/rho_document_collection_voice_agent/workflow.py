@@ -498,8 +498,7 @@ def _business_key(value: str) -> str:
 
 
 async def _speak_tool_result(ctx: RunContext, message: str) -> None:
-    """Speak a required workflow outcome fully and prevent a second model reply."""
-    ctx.disallow_interruptions()
+    """Speak a grounded workflow outcome without triggering a second model reply."""
     await ctx.wait_for_playout()
-    speech = ctx.session.say(message, allow_interruptions=False)
+    speech = ctx.session.say(message, allow_interruptions=True)
     await speech.wait_for_playout()

@@ -37,7 +37,7 @@ class _FakeSession:
         self.current_agent = _FakeAgent()
 
     def say(self, message: str, *, allow_interruptions: bool) -> _FakeSpeech:
-        assert allow_interruptions is False
+        assert allow_interruptions is True
         self.messages.append(message)
         return _FakeSpeech()
 
@@ -197,7 +197,7 @@ def test_successful_action_speaks_deterministic_complete_acknowledgment() -> Non
     assert tool.previews[-1]["details"] == {
         "promised_upload_date": "September 21, 2026"
     }
-    assert ctx.interruptions_disallowed is True
+    assert ctx.interruptions_disallowed is False
     assert ctx.waited_for_playout is True
     assert ctx.session.messages == [
         "I've recorded your commitment to upload the documents on September 21, "
@@ -308,7 +308,7 @@ def test_each_account_action_records_and_speaks_its_hard_boundary(
 
     assert tool.previews[-1]["conversation_disposition"] == disposition
     assert tool.previews[-1]["details"] == details
-    assert ctx.interruptions_disallowed is True
+    assert ctx.interruptions_disallowed is False
     assert ctx.waited_for_playout is True
     assert message_fragment in ctx.session.messages[-1]
 
