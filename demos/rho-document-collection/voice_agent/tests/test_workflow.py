@@ -18,8 +18,14 @@ from rho_document_collection_voice_agent.workflow import (
 
 
 class _FakeSpeech:
+    interrupted = False
+
     async def wait_for_playout(self) -> None:
         return None
+
+
+class _InterruptedFakeSpeech(_FakeSpeech):
+    interrupted = True
 
 
 class _FakeAgent:
@@ -32,19 +38,25 @@ class _FakeAgent:
 
 
 class _FakeSession:
-    def __init__(self) -> None:
+    def __init__(self, *, interrupt_next_speech: bool = False) -> None:
         self.messages: list[str] = []
         self.current_agent = _FakeAgent()
+        self.interrupt_next_speech = interrupt_next_speech
 
     def say(self, message: str, *, allow_interruptions: bool) -> _FakeSpeech:
         assert allow_interruptions is True
         self.messages.append(message)
+        if self.interrupt_next_speech:
+            self.interrupt_next_speech = False
+            return _InterruptedFakeSpeech()
         return _FakeSpeech()
 
 
 class _FakeRunContext:
-    def __init__(self) -> None:
-        self.session = _FakeSession()
+    def __init__(self, *, interrupt_next_speech: bool = False) -> None:
+        self.session = _FakeSession(
+            interrupt_next_speech=interrupt_next_speech,
+        )
         self.interruptions_disallowed = False
         self.waited_for_playout = False
 
@@ -200,9 +212,24 @@ def test_successful_action_speaks_deterministic_complete_acknowledgment() -> Non
     assert ctx.interruptions_disallowed is False
     assert ctx.waited_for_playout is True
     assert ctx.session.messages == [
-        "I've recorded your commitment to upload the documents on September 21, "
-        "2026. I'll pass that date to the document collection team. Do you need "
-        "anything else?"
+        "I've recorded your upload commitment for September 21, 2026. I'll pass "
+        "that timing to the document collection team. Do you need anything else?"
+    ]
+
+
+def test_later_today_commitment_is_preserved_without_reprompting() -> None:
+    tool = FollowUpPreviewTool(DEMO_CALL_RECORD, "demo-later-today")
+    ctx = _FakeRunContext()
+    verify_business_name = cast(Any, tool.verify_business_name)
+    record_upload_commitment = cast(Any, tool.record_upload_commitment)
+
+    asyncio.run(verify_business_name(None, "Northstar Labs"))
+    asyncio.run(record_upload_commitment(ctx, "later today"))
+
+    assert tool.previews[-1]["details"] == {"promised_upload_date": "later today"}
+    assert ctx.session.messages == [
+        "I've recorded your upload commitment for later today. I'll pass that "
+        "timing to the document collection team. Do you need anything else?"
     ]
 
 
@@ -223,6 +250,60 @@ def test_document_request_details_are_spoken_as_one_grounded_response() -> None:
         "a time?"
     ]
     assert tool.previews == []
+
+
+def test_outbound_document_reminder_ends_with_rhos_submission_question() -> None:
+    tool = FollowUpPreviewTool(
+        DEMO_CALL_RECORD,
+        "demo-outbound-details",
+        verification_mode="authorized_listener",
+    )
+    ctx = _FakeRunContext()
+    confirm_authorized_listener = cast(Any, tool.confirm_authorized_listener)
+    share_details = cast(Any, tool.share_document_request_details)
+
+    asyncio.run(confirm_authorized_listener(None, True))
+    asyncio.run(share_details(ctx))
+
+    assert ctx.session.messages[-1].endswith(
+        "Do you expect to submit the documents by then, or do you need an extension "
+        "or have any questions I can help with?"
+    )
+
+
+def test_critical_workflow_boundaries_are_spoken_first() -> None:
+    tool = FollowUpPreviewTool(DEMO_CALL_RECORD, "demo-boundary-order")
+    ctx = _FakeRunContext()
+    verify_business_name = cast(Any, tool.verify_business_name)
+    record_deadline_dispute = cast(Any, tool.record_deadline_dispute)
+    request_human_transfer = cast(Any, tool.request_human_transfer)
+
+    asyncio.run(verify_business_name(None, "Northstar Labs"))
+    asyncio.run(record_deadline_dispute(ctx, "September 24, 2026"))
+    asyncio.run(request_human_transfer(ctx, "More questions"))
+
+    assert ctx.session.messages[-2].startswith(
+        "Rho will need to check the deadline discrepancy. I can't confirm which "
+        "date is correct."
+    )
+    assert ctx.session.messages[-1].startswith(
+        "Live transfer is unavailable in this demo. You can call "
+    )
+
+
+def test_interrupted_tool_result_requests_complete_recovery() -> None:
+    tool = FollowUpPreviewTool(DEMO_CALL_RECORD, "demo-interrupted-result")
+    ctx = _FakeRunContext(interrupt_next_speech=True)
+    verify_business_name = cast(Any, tool.verify_business_name)
+    request_human_transfer = cast(Any, tool.request_human_transfer)
+
+    asyncio.run(verify_business_name(None, "Northstar Labs"))
+    result = asyncio.run(request_human_transfer(ctx, "More questions"))
+
+    assert result is not None
+    assert result.startswith("The required caller-facing result was interrupted.")
+    assert "Live transfer is unavailable in this demo" in result
+    assert "clientservice@rho.co" in result
 
 
 @pytest.mark.parametrize(
@@ -328,6 +409,20 @@ def test_not_a_good_time_can_be_recorded_before_account_authorization() -> None:
     assert tool.previews[-1]["details"] == {
         "preferred_callback_time": "tomorrow afternoon"
     }
+
+
+def test_not_a_good_time_does_not_invent_a_callback_time() -> None:
+    tool = FollowUpPreviewTool(
+        DEMO_CALL_RECORD,
+        "demo-not-a-good-time-no-callback",
+        verification_mode="authorized_listener",
+    )
+    action = cast(Any, tool.record_not_a_good_time)
+
+    asyncio.run(action(None))
+
+    assert tool.previews[-1]["conversation_disposition"] == "not_a_good_time"
+    assert tool.previews[-1]["details"] == {}
 
 
 @pytest.mark.parametrize("invalid_date", ["", " ", "x" * 501])

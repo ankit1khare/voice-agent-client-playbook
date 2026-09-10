@@ -1,5 +1,27 @@
 # Rho inbound simulation results
 
+## 2026-09-09 Rho-script alignment gate
+
+- LiveKit run: `SR_cK7bsJTTuENg`
+- Result: 11 passed, 0 failed
+- Mode: full speech-to-speech without injected ambient noise
+- Models: Deepgram Flux, Gemini 3.1 Flash Lite, and Rime Coda/Wawona
+- Source: temporary local worker connected to the `rime` LiveKit Cloud project
+- Scenarios: `simulations/scenarios.yaml`
+- Dashboard: <https://cloud.livekit.io/projects/p_64a692accjl/simulations/runs/SR_cK7bsJTTuENg>
+
+This gate follows the final comparison with Jelena's voicemail, live-call, and
+common-question scripts. It verifies the corrected `clientservice@rho.co`
+address, Rho's outbound submission-or-extension question, relative upload
+timing, screened-human disclosure, eleven conversation paths, and recovery when
+a caller interrupts a required workflow status or boundary. The focused human
+transfer rerun `SR_P4XpQWwotbz5` also passed 1/1.
+
+Earlier expanded runs exposed simulator barge-ins during deterministic workflow
+messages. The agent remains interruptible, resumes false interruptions after two
+seconds, and now gives the model an exact recovery instruction when a real caller
+interrupts required tool speech. The final run passed every checked-in scenario.
+
 ## 2026-09-09 post-review deployment gate
 
 - LiveKit run: `SR_hgHEXEJ8r9YC`

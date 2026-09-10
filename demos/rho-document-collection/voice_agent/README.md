@@ -72,10 +72,15 @@ switch and test-trunk ID as LiveKit secrets.
 
 If a phone-screening service answers first, the worker keeps normal agent replies
 paused while it waits for the screening result. A human connection resumes the
-conversation. A later voicemail invitation plays the complete fixed voicemail
+conversation by replaying the fixed disclosure directly to that person and waiting
+for their answer. A later voicemail invitation plays the complete fixed voicemail
 and disconnects without the conversational goodbye.
 
 Routine conversation and workflow acknowledgements allow caller interruption.
+If voice activity interrupts a response but no caller turn follows, Jenny resumes
+after the two-second false-interruption timeout instead of going silent.
+If a real caller interrupts a required workflow status or boundary, Jenny carries
+the exact result into her next reply so the caller still hears the material point.
 The AI and recording disclosure, voicemail, and final goodbye remain
 non-interruptible so those required messages play completely.
 

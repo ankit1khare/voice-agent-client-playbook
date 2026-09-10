@@ -204,15 +204,24 @@ class FollowUpPreviewTool(Toolset):
         ),
         flags=ToolFlag.IGNORE_ON_ENTER,
     )
-    async def share_document_request_details(self, ctx: RunContext) -> None:
+    async def share_document_request_details(self, ctx: RunContext) -> str | None:
         """Speak the complete reminder from validated call data."""
         self._require_access()
-        await _speak_tool_result(
+        if self._verification_mode == "authorized_listener":
+            closing_question = (
+                "Do you expect to submit the documents by then, or do you need an "
+                "extension or have any questions I can help with?"
+            )
+        else:
+            closing_question = (
+                "Would you like me to walk you through the upload one step at a time?"
+            )
+        return await _speak_tool_result(
             ctx,
             f"Rho is still awaiting {self._record.spoken_required_documents}. "
             f"The submission deadline is {self._record.spoken_deadline}. You can "
-            f"upload the documents under {self._record.spoken_upload_path}. Would "
-            "you like me to walk you through the upload one step at a time?",
+            f"upload the documents under {self._record.spoken_upload_path}. "
+            f"{closing_question}",
         )
 
     @function_tool(
@@ -239,8 +248,9 @@ class FollowUpPreviewTool(Toolset):
     @function_tool(
         name="record_upload_commitment",
         description=(
-            "Record the exact date the client promises to upload the documents. "
-            "Ask for a calendar date before calling this tool."
+            "Record the date or unambiguous timing the client promises to upload the "
+            "documents. Preserve relative timing such as today, later today, or "
+            "tomorrow instead of asking the client to restate it."
         ),
         flags=ToolFlag.IGNORE_ON_ENTER,
     )
@@ -248,7 +258,7 @@ class FollowUpPreviewTool(Toolset):
         self,
         ctx: RunContext,
         promised_upload_date: str,
-    ) -> None:
+    ) -> str | None:
         """Record a client's promised upload date."""
         self._require_access()
         promised_date = _required_detail(promised_upload_date, "promised_upload_date")
@@ -256,11 +266,10 @@ class FollowUpPreviewTool(Toolset):
             ConversationDisposition.PROMISE_TO_UPLOAD,
             promised_upload_date=promised_date,
         )
-        await _speak_tool_result(
+        return await _speak_tool_result(
             ctx,
-            f"I've recorded your commitment to upload the documents on "
-            f"{promised_date}. I'll pass that date to the document collection "
-            "team. Do you need anything else?",
+            f"I've recorded your upload commitment for {promised_date}. I'll pass "
+            "that timing to the document collection team. Do you need anything else?",
         )
 
     @function_tool(
@@ -275,7 +284,7 @@ class FollowUpPreviewTool(Toolset):
         self,
         ctx: RunContext,
         requested_submission_date: str,
-    ) -> None:
+    ) -> str | None:
         """Record an extension request for Underwriting review."""
         self._require_access()
         requested_date = _required_detail(
@@ -285,7 +294,7 @@ class FollowUpPreviewTool(Toolset):
             ConversationDisposition.EXTENSION_REQUESTED,
             requested_submission_date=requested_date,
         )
-        await _speak_tool_result(
+        return await _speak_tool_result(
             ctx,
             f"I've recorded your extension request through {requested_date} for "
             "Underwriting to review. It is not approved yet. Do you need anything "
@@ -300,11 +309,11 @@ class FollowUpPreviewTool(Toolset):
         ),
         flags=ToolFlag.IGNORE_ON_ENTER,
     )
-    async def record_prior_upload_claim(self, ctx: RunContext) -> None:
+    async def record_prior_upload_claim(self, ctx: RunContext) -> str | None:
         """Record the client's unverified upload report."""
         self._require_access()
         self.record_preview(ConversationDisposition.PRIOR_UPLOAD_CLAIMED)
-        await _speak_tool_result(
+        return await _speak_tool_result(
             ctx,
             "I've recorded that you reported the upload complete for Client Service "
             "to check. I can't independently confirm receipt. Do you need anything "
@@ -323,7 +332,7 @@ class FollowUpPreviewTool(Toolset):
         self,
         ctx: RunContext,
         client_expected_deadline: str,
-    ) -> None:
+    ) -> str | None:
         """Record a disputed deadline for Underwriting review."""
         self._require_access()
         expected_deadline = _required_detail(
@@ -333,11 +342,11 @@ class FollowUpPreviewTool(Toolset):
             ConversationDisposition.DEADLINE_DISPUTED,
             client_expected_deadline=expected_deadline,
         )
-        await _speak_tool_result(
+        return await _speak_tool_result(
             ctx,
-            f"I've recorded that you expected {expected_deadline}. Underwriting "
-            "will need to check the discrepancy. I can't confirm which date is "
-            "correct. Do you need anything else?",
+            "Rho will need to check the deadline discrepancy. I can't confirm which "
+            f"date is correct. I've recorded that you expected {expected_deadline} "
+            "for Underwriting to review. Do you need anything else?",
         )
 
     @function_tool(
@@ -352,7 +361,7 @@ class FollowUpPreviewTool(Toolset):
         self,
         ctx: RunContext,
         reason: str,
-    ) -> None:
+    ) -> str | None:
         """Record a request to review the monthly requirement."""
         self._require_access()
         change_reason = _required_detail(reason, "reason")
@@ -360,7 +369,7 @@ class FollowUpPreviewTool(Toolset):
             ConversationDisposition.REQUIREMENT_CHANGE_REQUESTED,
             reason=change_reason,
         )
-        await _speak_tool_result(
+        return await _speak_tool_result(
             ctx,
             "I've recorded your reason for the appropriate team to review. No "
             "requirement has been changed. Do you need anything else?",
@@ -379,7 +388,7 @@ class FollowUpPreviewTool(Toolset):
         ctx: RunContext,
         rho_contact_name: str,
         status_update: str,
-    ) -> None:
+    ) -> str | None:
         """Record an existing human support relationship."""
         self._require_access()
         contact_name = _required_detail(rho_contact_name, "rho_contact_name")
@@ -389,7 +398,7 @@ class FollowUpPreviewTool(Toolset):
             rho_contact_name=contact_name,
             status_update=latest_status,
         )
-        await _speak_tool_result(
+        return await _speak_tool_result(
             ctx,
             f"I've recorded that you're working with {contact_name} and that "
             f"{latest_status}. I didn't update any existing case. Do you need "
@@ -408,18 +417,18 @@ class FollowUpPreviewTool(Toolset):
         self,
         ctx: RunContext,
         reason: str = "",
-    ) -> None:
+    ) -> str | None:
         """Exercise the disabled transfer branch and record the request."""
         self._require_access()
         self.record_preview(
             ConversationDisposition.HUMAN_TRANSFER_REQUESTED,
             reason=reason,
         )
-        await _speak_tool_result(
+        return await _speak_tool_result(
             ctx,
-            "I've recorded your request for Client Service. Live transfer is "
-            f"unavailable in this demo. You can call {RHO_SUPPORT_PHONE_SPOKEN} or "
-            f"email {RHO_SUPPORT_EMAIL}. Do you need anything else?",
+            "Live transfer is unavailable in this demo. You can call "
+            f"{RHO_SUPPORT_PHONE_SPOKEN} or email {RHO_SUPPORT_EMAIL}. I've recorded "
+            "your request for Client Service. Do you need anything else?",
         )
 
     @function_tool(
@@ -430,11 +439,11 @@ class FollowUpPreviewTool(Toolset):
         ),
         flags=ToolFlag.IGNORE_ON_ENTER,
     )
-    async def record_secure_link_request(self, ctx: RunContext) -> None:
+    async def record_secure_link_request(self, ctx: RunContext) -> str | None:
         """Record a large-file help request for Client Service."""
         self._require_access()
         self.record_preview(ConversationDisposition.SECURE_LINK_REQUESTED)
-        await _speak_tool_result(
+        return await _speak_tool_result(
             ctx,
             "I've recorded a secure upload link request for Client Service. Client "
             "Service must provide an approved link; no link was sent. Do you need "
@@ -497,8 +506,14 @@ def _business_key(value: str) -> str:
     return "".join(words)
 
 
-async def _speak_tool_result(ctx: RunContext, message: str) -> None:
-    """Speak a grounded workflow outcome without triggering a second model reply."""
+async def _speak_tool_result(ctx: RunContext, message: str) -> str | None:
+    """Speak a grounded result and request recovery only after an interruption."""
     await ctx.wait_for_playout()
     speech = ctx.session.say(message, allow_interruptions=True)
     await speech.wait_for_playout()
+    if speech.interrupted:
+        return (
+            "The required caller-facing result was interrupted. In your next reply, "
+            f"first state this result completely: {message}"
+        )
+    return None

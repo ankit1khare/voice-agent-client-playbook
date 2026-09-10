@@ -29,6 +29,8 @@ def test_outbound_prompt_requires_authorization_before_document_details() -> Non
 
     assert "synthetic outbound demonstration" in instructions
     assert "If it is not a good time" in instructions
+    assert "only if the listener volunteers one" in instructions
+    assert "Acknowledge the answer, then call end_call" in instructions
     assert "Maya Chen" in instructions
     assert "calling for Northstar Labs, Inc." in instructions
     assert "Rho has approved naming the business at this stage" in instructions
@@ -39,6 +41,9 @@ def test_outbound_prompt_requires_authorization_before_document_details() -> Non
     assert "Tuesday, September 22, 2026" in instructions
     assert "Settings, then Business Documents" in instructions
     assert "call share_document_request_details immediately" in instructions
+    assert "today, later today, or tomorrow" in instructions
+    assert "call record_deadline_dispute with that date immediately" in instructions
+    assert "required tool acknowledgment was interrupted" in instructions
     assert "cannot" in instructions and "independently confirm receipt" in instructions
     assert "financial, legal, tax, underwriting, or credit advice" in instructions
 
@@ -77,8 +82,10 @@ def test_runtime_voicemail_matches_rendered_demo_asset_text() -> None:
     assert "second quarter 2026 interim financials" in asset
     assert "Settings, then Business Documents" in asset
     assert "Tuesday, September 22" in asset
-    assert "service@rho.com" in asset
-    assert "clientService@rho.co" not in asset
+    assert "clientservice@rho.co" in asset
+    assert "service@rho.com" not in asset
+    assert "upcoming deadline to submit your financial documentation" in asset
+    assert "You can securely upload the documents" in asset
     assert "fictional account information" not in asset
     assert "Rho Demo Portal" not in asset
 

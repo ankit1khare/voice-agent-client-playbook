@@ -20,7 +20,8 @@ it contains operator procedures and fallback instructions.
 - Upload path: Settings, Business Documents
 
 Every business and contact detail is fictional. The upload path and support
-contact information follow Rho's September 9 direction.
+contact information follow Rho's September 9 direction: `clientservice@rho.co`
+and `1-855-743-8746`.
 
 ## Opening
 
@@ -122,6 +123,8 @@ uv run rho-zendesk-preview \
 | Human request | Jenny records a transfer preview, says live transfer is disabled, and does not dial Client Service. |
 | Zendesk preview | The payload says `demo_only=true`, `write_performed=false`, and `zendesk_action=preview`. |
 | Interruption | After the fixed opening, ordinary caller speech stops Jenny within the VAD threshold. |
+| False interruption | If noise stops an interruptible response without producing a caller turn, Jenny resumes after two seconds. |
+| Interrupted workflow result | If a caller talks over a required status or boundary, Jenny finishes the material result before continuing. |
 | Inbound agent hangup | When the caller is done, Jenny says "Thank you for calling Rho. Have a great day.", waits for playout plus the carrier grace period, and disconnects the room. |
 | Outbound agent hangup | When Jenny's outbound call is done, she says "Thanks, goodbye for now. Have a great day.", waits for playout plus the carrier grace period, and disconnects the room. |
 | Session transcript | After the session closes, private cloud logs contain one structured `session_end_transcript` record with the timestamped chat history, tool calls, and complete follow-up preview payloads. |
@@ -131,8 +134,9 @@ uv run rho-zendesk-preview \
 | Large file | Jenny records a secure-link request and does not invent or send a link. |
 | Outbound dispatch | An authorized request reaches the persistent cloud worker and masks the destination in logs. |
 | Support-number denylist | The dispatcher rejects `+1 855-743-8746` as a test destination, even with execution enabled. |
+| Screened human | If call screening connects a person, that person hears the fixed disclosure and good-time question before account authorization begins. |
 | Voicemail branch | AMD plays the exact reminder on `machine-vm`; the Coda WAV remains a presentation fallback. |
-| Full-audio simulation | All ten checked-in scenarios pass through STT, LLM, and TTS without injected noise; noise is a separate fail-closed ASR stress test. |
+| Full-audio simulation | All eleven checked-in scenarios pass through STT, LLM, and TTS without injected noise; noise is a separate fail-closed ASR stress test. |
 | Reliability gate | Five consecutive rehearsal calls complete without a critical failure. |
 
 ## Validation commands

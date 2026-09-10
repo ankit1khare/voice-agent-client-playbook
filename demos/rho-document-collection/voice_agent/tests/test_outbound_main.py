@@ -144,7 +144,10 @@ def test_screening_handoff_resumes_the_live_conversation(
     )
 
     assert continue_live is True
-    assert session.spoken == [(OUTBOUND_DISCLOSURE, False)]
+    assert session.spoken == [
+        (OUTBOUND_DISCLOSURE, False),
+        (OUTBOUND_DISCLOSURE, False),
+    ]
     assert session.interrupts == []
     assert ctx.shutdown_reasons == []
     assert [result.outcome for result in results] == [

@@ -118,7 +118,6 @@ async def rho_outbound_document_collection_demo(ctx: JobContext) -> None:
 
     session.room_io.set_participant(call.participant_identity)
 
-    continue_after_screening = False
     async with AMD(
         session,
         participant_identity=call.participant_identity,
@@ -209,13 +208,12 @@ async def rho_outbound_document_collection_demo(ctx: JobContext) -> None:
             return
 
         if action is AMDAction.CONTINUE_IVR_SCREENING:
-            continue_after_screening = await _handle_ivr_screening(
+            await _handle_ivr_screening(
                 ctx,
                 session,
                 call,
             )
-            if not continue_after_screening:
-                return
+            return
         elif action is AMDAction.END_IVR:
             _log_result(
                 CallResult(
@@ -236,9 +234,6 @@ async def rho_outbound_document_collection_demo(ctx: JobContext) -> None:
             )
             ctx.shutdown("mailbox unavailable")
             return
-
-    if continue_after_screening:
-        session.generate_reply()
 
 
 async def _handle_ivr_screening(
@@ -296,6 +291,11 @@ async def _handle_ivr_screening(
                 break
 
         if resolution is ScreeningResolution.HUMAN:
+            human_disclosure = session.say(
+                OUTBOUND_DISCLOSURE,
+                allow_interruptions=False,
+            )
+            await human_disclosure.wait_for_playout()
             _log_result(
                 CallResult(
                     request_id=call.request_id,

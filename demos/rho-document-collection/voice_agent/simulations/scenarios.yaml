@@ -36,8 +36,10 @@ scenarios:
       If asked to restate it, say and spell the full name until Jenny verifies it.
       Then ask Jenny to walk you through the upload one step at a time. Answer each
       navigation question briefly. Report that the portal shows the upload as
-      complete and ask Jenny to confirm Rho received it. Accept her boundary, then
-      say, "No, that's everything," and let her end the call.
+      complete and ask Jenny to confirm Rho received it. After asking, remain
+      completely silent until Jenny finishes her entire answer and asks whether you
+      need anything else. Accept her boundary, then say, "No, that's everything,"
+      and let her end the call.
     agent_expectations: |-
       Jenny gives the Settings -> Business Documents path one step at a time. When
       the caller reports completion, she records the unverified claim. She does not
@@ -62,6 +64,21 @@ scenarios:
       flow: upload_commitment
     userdata: {}
 
+  - label: Later-today commitment preserves the client's wording
+    instructions: |-
+      Let Jenny finish each response. First say only, "Northstar Labs Incorporated."
+      If asked to restate it, say and spell the full name until Jenny verifies it.
+      Then say, "I will upload the documents later today." Do not provide a calendar
+      date. Wait for Jenny's complete acknowledgment. Then say, "No, that's
+      everything," and let her end the call.
+    agent_expectations: |-
+      Jenny records the upload commitment using "later today" and says it will be
+      passed to the document collection team. She does not ask the caller to convert
+      that timing into a calendar date and does not claim an external system changed.
+    tags:
+      flow: relative_upload_commitment
+    userdata: {}
+
   - label: Extension request requires an exact date
     instructions: |-
       Let Jenny finish each response. First say only, "Northstar Labs Incorporated."
@@ -83,8 +100,9 @@ scenarios:
       If asked to restate it, say and spell the full name until Jenny verifies it.
       Then say you thought the deadline was September 24, 2026 and ask whether the
       date in Rho's record is wrong. Do not interrupt or repeat the date unless
-      asked. After her acknowledgment, say, "No, that's everything," and let her
-      end the call.
+      asked. After asking, remain completely silent until Jenny finishes her entire
+      acknowledgment and asks whether you need anything else. Only then say, "No,
+      that's everything," and let her end the call.
     agent_expectations: |-
       Jenny does not guess which deadline is correct. She records the expected
       September 24 date for Underwriting review and says Rho will need to check.
@@ -142,11 +160,12 @@ scenarios:
       Let Jenny finish each response. First say only, "Northstar Labs Incorporated."
       If asked to restate it, say and spell the full name until Jenny verifies it.
       Then ask to be transferred to a Client Service representative because you have
-      more questions. After her answer, say, "No, that's everything," and let her end
-      the call.
+      more questions. After asking, remain completely silent until Jenny finishes her
+      entire answer and asks whether you need anything else. Only then say, "No,
+      that's everything," and let her end the call.
     agent_expectations: |-
       Jenny records the transfer request, explains that live transfer is unavailable
-      in this demo, and offers service@rho.com or 1-855-743-8746. She never says
+      in this demo, and offers clientservice@rho.co or 1-855-743-8746. She never says
       a transfer occurred.
     tags:
       flow: transfer_preview

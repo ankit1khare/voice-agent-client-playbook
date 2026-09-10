@@ -15,6 +15,7 @@ ENDPOINTING_MIN_DELAY_SECONDS = 0.5
 ENDPOINTING_MAX_DELAY_SECONDS = 3.0
 INTERRUPTION_MIN_DURATION_SECONDS = 0.3
 INTERRUPTION_MIN_WORDS = 0
+FALSE_INTERRUPTION_TIMEOUT_SECONDS = 2.0
 
 
 @dataclass(frozen=True)
@@ -54,8 +55,8 @@ def build_turn_handling_options() -> TurnHandlingOptions:
             "mode": "vad",
             "min_duration": INTERRUPTION_MIN_DURATION_SECONDS,
             "min_words": INTERRUPTION_MIN_WORDS,
-            "resume_false_interruption": False,
-            "false_interruption_timeout": None,
+            "resume_false_interruption": True,
+            "false_interruption_timeout": FALSE_INTERRUPTION_TIMEOUT_SECONDS,
         },
         preemptive_generation={"preemptive_tts": False},
     )

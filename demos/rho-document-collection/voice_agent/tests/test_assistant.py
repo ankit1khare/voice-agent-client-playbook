@@ -35,6 +35,10 @@ def test_instructions_define_the_inbound_rho_demo() -> None:
     assert "Tuesday, September 22, 2026" in instructions
     assert "Settings, then Business Documents" in instructions
     assert "call share_document_request_details immediately" in instructions
+    assert "including details given in the same turn" in instructions
+    assert "call record_deadline_dispute with that date immediately" in instructions
+    assert "Do not ask for it again" in instructions
+    assert "required tool acknowledgment was interrupted" in instructions
 
 
 def test_instructions_ground_upload_help_and_walkthrough() -> None:

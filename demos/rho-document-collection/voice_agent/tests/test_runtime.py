@@ -10,6 +10,7 @@ from rho_document_collection_voice_agent.assistant import INITIAL_DISCLOSURE
 from rho_document_collection_voice_agent.runtime import (
     ENDPOINTING_MAX_DELAY_SECONDS,
     ENDPOINTING_MIN_DELAY_SECONDS,
+    FALSE_INTERRUPTION_TIMEOUT_SECONDS,
     INTERRUPTION_MIN_DURATION_SECONDS,
     INTERRUPTION_MIN_WORDS,
     build_room_options,
@@ -67,8 +68,8 @@ def test_build_turn_handling_options_tunes_phone_conversation() -> None:
         "mode": "vad",
         "min_duration": INTERRUPTION_MIN_DURATION_SECONDS,
         "min_words": INTERRUPTION_MIN_WORDS,
-        "resume_false_interruption": False,
-        "false_interruption_timeout": None,
+        "resume_false_interruption": True,
+        "false_interruption_timeout": FALSE_INTERRUPTION_TIMEOUT_SECONDS,
     }
     assert options["preemptive_generation"] == {"preemptive_tts": False}
 
