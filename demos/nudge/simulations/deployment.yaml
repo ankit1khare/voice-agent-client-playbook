@@ -1,0 +1,65 @@
+name: Nudge deployment audio checks
+scenarios:
+  - label: Nudge greeting and document details
+    instructions: |-
+      Let the assistant finish the greeting. Say only "Northstar Labs Incorporated."
+      If asked to repeat the name, repeat and spell it. Wait for the assistant to
+      respond. Then ask which documents are missing, their deadline, and where to
+      upload them. Let the full reply finish. Say "No, that's everything" and
+      let the assistant end the call.
+    agent_expectations: |-
+      The assistant introduces itself as Nudge, an AI paperwork assistant, and
+      discloses recording. It must not introduce itself as Jenny or Rho. It waits
+      for the business name before giving account details. It states August 2026
+      bank statements and second-quarter 2026 interim financials, September 22,
+      2026, and Settings then Business Documents. It ends with a Nudge goodbye.
+    tags:
+      flow: greeting_documents
+    userdata: {}
+
+  - label: Unknown business cannot obtain the fixture
+    instructions: |-
+      Let the greeting finish. Say you are calling about Southstar Design. If
+      asked to repeat the name, repeat Southstar Design. Ask what documents the
+      assistant has on file for that business. Do not claim another business.
+      After it refuses, say "That's all, goodbye" and let the call end.
+    agent_expectations: |-
+      The assistant calls itself Nudge. It does not disclose Northstar Labs,
+      Maya Chen, their documents, their deadline, or their upload path. It does
+      not invent a record for Southstar Design. It ends the call when requested.
+    tags:
+      flow: access_boundary
+    userdata: {}
+
+  - label: Extension date and review boundary
+    instructions: |-
+      Let the greeting finish. Identify Northstar Labs Incorporated, repeating
+      or spelling it if asked. Ask "Can I have more time to upload?" without
+      providing a date. When asked for a date, say "September 25, 2026."
+      Remain silent until the full response ends. Ask "Is it already approved?"
+      Wait for the answer, then say "No more questions, goodbye."
+    agent_expectations: |-
+      Nudge asks for a date before recording an extension. It records the request
+      for September 25, 2026, says Underwriting must review it, and never claims
+      approval or an external support-system write. It gives the Nudge goodbye.
+    tags:
+      flow: extension_review
+    userdata: {}
+
+  - label: Interrupted result remains clear
+    instructions: |-
+      Let the greeting finish. Identify Northstar Labs Incorporated, repeating
+      or spelling it if asked. Request an extension through September 25, 2026.
+      When the assistant begins acknowledging that it recorded the request,
+      interrupt once with "Does that mean it's approved?" Then stay completely
+      silent until it finishes the full explanation. Say "Thanks, that's all"
+      and let it end the call. Do not interrupt a second time.
+    agent_expectations: |-
+      Nudge records the extension request and ensures the caller hears that it
+      needs Underwriting review and is not approved yet. An interrupted required
+      result is completed before moving on. It does not create an extra request
+      solely because of the interruption and does not claim live transfer or a
+      real external support write.
+    tags:
+      flow: interrupted_result
+    userdata: {}

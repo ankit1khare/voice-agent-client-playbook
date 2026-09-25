@@ -1,0 +1,628 @@
+"""Demo-only business dispositions and Zendesk ticket previews."""
+
+from __future__ import annotations
+
+import logging
+import re
+from enum import Enum
+from typing import Any, Literal
+
+from livekit.agents import RunContext, function_tool
+from livekit.agents.llm import ToolError, ToolFlag, Toolset
+
+from nudge_voice_agent.demo_context import (
+    NUDGE_SUPPORT_EMAIL,
+    NUDGE_SUPPORT_PHONE_SPOKEN,
+    CentralizedCallRecord,
+)
+
+ZENDESK_TICKET_PREVIEW_EVENT = "zendesk_ticket_preview"
+
+logger = logging.getLogger("nudge-workflow-preview")
+
+
+class ConversationDisposition(str, Enum):
+    """Business result captured during a live reminder conversation."""
+
+    NOT_A_GOOD_TIME = "not_a_good_time"
+    PROMISE_TO_UPLOAD = "promise_to_upload"
+    EXTENSION_REQUESTED = "extension_requested"
+    PRIOR_UPLOAD_CLAIMED = "prior_upload_claimed"
+    DEADLINE_DISPUTED = "deadline_disputed"
+    REQUIREMENT_CHANGE_REQUESTED = "requirement_change_requested"
+    EXISTING_NUDGE_CONTACT = "existing_nudge_contact"
+    HUMAN_TRANSFER_REQUESTED = "human_transfer_requested"
+    SECURE_LINK_REQUESTED = "secure_link_requested"
+
+
+_SUGGESTED_ROUTES = {
+    ConversationDisposition.NOT_A_GOOD_TIME: "Client Service",
+    ConversationDisposition.PROMISE_TO_UPLOAD: "Document collection team",
+    ConversationDisposition.EXTENSION_REQUESTED: "Underwriting",
+    ConversationDisposition.PRIOR_UPLOAD_CLAIMED: "Client Service",
+    ConversationDisposition.DEADLINE_DISPUTED: "Underwriting",
+    ConversationDisposition.REQUIREMENT_CHANGE_REQUESTED: "Review team, owner TBD",
+    ConversationDisposition.EXISTING_NUDGE_CONTACT: "Client Service",
+    ConversationDisposition.HUMAN_TRANSFER_REQUESTED: "Client Service",
+    ConversationDisposition.SECURE_LINK_REQUESTED: "Client Service",
+}
+
+
+def build_zendesk_ticket_preview(
+    *,
+    record: CentralizedCallRecord,
+    request_id: str,
+    disposition: ConversationDisposition,
+    details: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Build the external-write payload without sending it to Zendesk."""
+    clean_details = {
+        key: value.strip()
+        for key, value in (details or {}).items()
+        if isinstance(value, str) and value.strip()
+    }
+    transfer_requested = disposition is ConversationDisposition.HUMAN_TRANSFER_REQUESTED
+    return {
+        "demo_only": True,
+        "write_performed": False,
+        "source": "nudge_voice_agent_demo",
+        "request_id": request_id,
+        "call_record_id": record.record_id,
+        "business_name": record.business_name,
+        "contact_name": record.contact_name,
+        "required_documents": [
+            document.display_name for document in record.required_documents
+        ],
+        "deadline": record.upload_deadline.isoformat(),
+        "conversation_disposition": disposition.value,
+        "suggested_route": _SUGGESTED_ROUTES[disposition],
+        "details": clean_details,
+        "human_transfer": {
+            "requested": transfer_requested,
+            "performed": False,
+            "destination": "Nudge Client Service" if transfer_requested else None,
+        },
+        "zendesk_action": "preview",
+    }
+
+
+class FollowUpPreviewTool(Toolset):
+    """Capture follow-up work while all external integrations remain disabled."""
+
+    def __init__(
+        self,
+        record: CentralizedCallRecord,
+        request_id: str,
+        verification_mode: Literal["business_name", "authorized_listener"] = (
+            "business_name"
+        ),
+    ) -> None:
+        super().__init__(id="nudge_follow_up_preview")
+        unavailable_gate = (
+            "confirm_authorized_listener"
+            if verification_mode == "business_name"
+            else "verify_business_name"
+        )
+        self._tools = [tool for tool in self._tools if tool.id != unavailable_gate]
+        self._record = record
+        self._request_id = request_id
+        self._verification_mode = verification_mode
+        self._access_granted = False
+        self._pending_spoken_result: str | None = None
+        self._pending_end_call_result: str | None = None
+        self.previews: list[dict[str, Any]] = []
+
+    @property
+    def access_granted(self) -> bool:
+        """Return whether this call has passed its configured access gate."""
+        return self._access_granted
+
+    @property
+    def has_pending_spoken_result(self) -> bool:
+        """Return whether recovery must precede an ordinary model reply."""
+        return self._pending_spoken_result is not None
+
+    def take_pending_spoken_result(self) -> str | None:
+        """Return and clear a required result that must precede call shutdown."""
+        message = self._pending_end_call_result or self._pending_spoken_result
+        self._pending_spoken_result = None
+        self._pending_end_call_result = None
+        return message
+
+    @function_tool(
+        name="verify_business_name",
+        description=(
+            "Required before sharing account details or recording any account action. "
+            "Pass exactly the business name spoken by the caller. Do not infer a match."
+        ),
+        flags=ToolFlag.IGNORE_ON_ENTER,
+    )
+    async def verify_business_name(
+        self,
+        ctx: RunContext,
+        provided_business_name: str,
+    ) -> str:
+        """Match the caller-provided business name without exposing the record."""
+        if self._verification_mode != "business_name":
+            raise ToolError("Use confirm_authorized_listener for this outbound call.")
+        provided = _required_detail(provided_business_name, "provided_business_name")
+        self._access_granted = _business_key(provided) == _business_key(
+            self._record.business_name
+        )
+        if self._access_granted:
+            await self._disable_verification_tool(ctx, "verify_business_name")
+            return (
+                "Business verified. Do not volunteer the account record. If this "
+                "turn contained only the business name, ask how you can help and "
+                "wait. Otherwise, handle the request or status already provided."
+            )
+        return (
+            "Business not verified. Do not reveal record details or use another "
+            "follow-up tool. Ask the caller to restate or spell the full business "
+            "name without suggesting a customer name."
+        )
+
+    @function_tool(
+        name="confirm_authorized_listener",
+        description=(
+            "Required on an outbound call before account details or account actions. "
+            "Set authorized to true only after the listener explicitly confirms they "
+            "are the named contact or authorized to help with the business."
+        ),
+        flags=ToolFlag.IGNORE_ON_ENTER,
+    )
+    async def confirm_authorized_listener(
+        self,
+        ctx: RunContext,
+        authorized: bool,
+    ) -> str:
+        """Gate outbound account access on the listener's explicit confirmation."""
+        if self._verification_mode != "authorized_listener":
+            raise ToolError("Use verify_business_name for this inbound call.")
+        self._access_granted = authorized
+        if authorized:
+            await self._disable_verification_tool(ctx, "confirm_authorized_listener")
+            return (
+                "Listener authorization confirmed. You may now discuss the outbound "
+                "record and use its follow-up tools."
+            )
+        return (
+            "Listener is not authorized. Do not reveal record details or use an "
+            "account-specific follow-up tool."
+        )
+
+    def record_preview(
+        self,
+        disposition: ConversationDisposition,
+        **details: str,
+    ) -> dict[str, Any]:
+        """Create and log one demo-only follow-up payload."""
+        preview = build_zendesk_ticket_preview(
+            record=self._record,
+            request_id=self._request_id,
+            disposition=disposition,
+            details=details,
+        )
+        self.previews.append(preview)
+        logger.info(
+            ZENDESK_TICKET_PREVIEW_EVENT,
+            extra={"zendesk_ticket_preview": preview},
+        )
+        return preview
+
+    @function_tool(
+        name="finish_interrupted_result",
+        description=(
+            "Finish a required workflow status or boundary that the caller "
+            "interrupted. Call this before any other response or tool when an "
+            "interrupted workflow tool directs you to do so."
+        ),
+        flags=ToolFlag.IGNORE_ON_ENTER,
+    )
+    async def finish_interrupted_result(self, ctx: RunContext) -> str | None:
+        """Finish and clear the exact pending workflow result."""
+        message = self._pending_spoken_result
+        if message is None:
+            return "No required workflow result is waiting to be finished."
+        return await self._speak_required_result(ctx, message)
+
+    @function_tool(
+        name="share_document_request_details",
+        description=(
+            "After access verification, speak every required document, the exact "
+            "deadline, and the upload path in one complete response. Use this instead "
+            "of generating those details yourself."
+        ),
+        flags=ToolFlag.IGNORE_ON_ENTER,
+    )
+    async def share_document_request_details(self, ctx: RunContext) -> str | None:
+        """Speak the complete reminder from validated call data."""
+        self._require_access()
+        self._require_no_pending_result()
+        if self._verification_mode == "authorized_listener":
+            closing_question = (
+                "Do you expect to submit the documents by then, or do you need an "
+                "extension or have any questions I can help with?"
+            )
+        else:
+            closing_question = (
+                "Would you like me to walk you through the upload one step at a time?"
+            )
+        message = (
+            f"Nudge is still awaiting {self._record.spoken_required_documents}. "
+            f"The submission deadline is {self._record.spoken_deadline}. You can "
+            f"upload the documents under {self._record.spoken_upload_path}. "
+            f"{closing_question}"
+        )
+        if await _speak_tool_result(ctx, message):
+            return None
+        return (
+            "The document reminder was interrupted. Respond directly to the "
+            "caller's current request or status. Do not replay the reminder unless "
+            "the caller asks."
+        )
+
+    @function_tool(
+        name="record_not_a_good_time",
+        description=(
+            "Record that the client cannot talk now. Include a preferred callback "
+            "time only if the client volunteered one. This does not schedule a call."
+        ),
+        flags=ToolFlag.IGNORE_ON_ENTER,
+    )
+    async def record_not_a_good_time(
+        self,
+        ctx: RunContext,
+        preferred_callback_time: str = "",
+    ) -> str:
+        """Record an unavailable client without inventing a callback."""
+        del ctx
+        self.record_preview(
+            ConversationDisposition.NOT_A_GOOD_TIME,
+            preferred_callback_time=preferred_callback_time,
+        )
+        return "The demo follow-up preview is saved. No callback was scheduled."
+
+    @function_tool(
+        name="record_upload_commitment",
+        description=(
+            "Record the date or unambiguous timing the client promises to upload the "
+            "documents. Preserve relative timing such as today, later today, or "
+            "tomorrow instead of asking the client to restate it."
+        ),
+        flags=ToolFlag.IGNORE_ON_ENTER,
+    )
+    async def record_upload_commitment(
+        self,
+        ctx: RunContext,
+        promised_upload_date: str,
+    ) -> str | None:
+        """Record a client's promised upload date."""
+        self._require_access()
+        self._require_no_pending_result()
+        promised_date = _required_detail(promised_upload_date, "promised_upload_date")
+        self.record_preview(
+            ConversationDisposition.PROMISE_TO_UPLOAD,
+            promised_upload_date=promised_date,
+        )
+        return await self._speak_required_result(
+            ctx,
+            f"I've recorded your upload commitment for {promised_date}. I'll pass "
+            "that timing to the document collection team. Do you need anything else?",
+        )
+
+    @function_tool(
+        name="record_extension_request",
+        description=(
+            "Record an extension only after the caller supplies a requested date. "
+            "If no date was supplied, ask for it and wait. Never use unknown, TBD, "
+            "or an invented date. This creates only a "
+            "demo preview and does not approve the extension."
+        ),
+        flags=ToolFlag.IGNORE_ON_ENTER,
+    )
+    async def record_extension_request(
+        self,
+        ctx: RunContext,
+        requested_submission_date: str,
+    ) -> str | None:
+        """Record an extension request for Underwriting review."""
+        self._require_access()
+        self._require_no_pending_result()
+        requested_date = _required_extension_date(requested_submission_date)
+        self.record_preview(
+            ConversationDisposition.EXTENSION_REQUESTED,
+            requested_submission_date=requested_date,
+        )
+        return await self._speak_required_result(
+            ctx,
+            f"I've recorded your extension request through {requested_date} for "
+            "Underwriting to review. It is not approved yet. Do you need anything "
+            "else?",
+        )
+
+    @function_tool(
+        name="record_prior_upload_claim",
+        description=(
+            "Record that the client says the documents were already uploaded. "
+            "This tool does not check or confirm document status."
+        ),
+        flags=ToolFlag.IGNORE_ON_ENTER,
+    )
+    async def record_prior_upload_claim(self, ctx: RunContext) -> str | None:
+        """Record the client's unverified upload report."""
+        self._require_access()
+        self._require_no_pending_result()
+        self.record_preview(ConversationDisposition.PRIOR_UPLOAD_CLAIMED)
+        return await self._speak_required_result(
+            ctx,
+            "I've recorded that you reported the upload complete for Client Service "
+            "to check. I can't independently confirm receipt. Do you need anything "
+            "else?",
+        )
+
+    @function_tool(
+        name="record_deadline_dispute",
+        description=(
+            "Record the deadline the client expected. Do not guess which deadline "
+            "is correct or promise that it will change."
+        ),
+        flags=ToolFlag.IGNORE_ON_ENTER,
+    )
+    async def record_deadline_dispute(
+        self,
+        ctx: RunContext,
+        client_expected_deadline: str,
+    ) -> str | None:
+        """Record a disputed deadline for Underwriting review."""
+        self._require_access()
+        self._require_no_pending_result()
+        expected_deadline = _required_detail(
+            client_expected_deadline, "client_expected_deadline"
+        )
+        self.record_preview(
+            ConversationDisposition.DEADLINE_DISPUTED,
+            client_expected_deadline=expected_deadline,
+        )
+        return await self._speak_required_result(
+            ctx,
+            "Nudge will need to check the deadline discrepancy. I can't confirm which "
+            f"date is correct. I've recorded that you expected {expected_deadline} "
+            "for Underwriting to review. Do you need anything else?",
+        )
+
+    @function_tool(
+        name="record_requirement_change_request",
+        description=(
+            "Record why the client wants Nudge to review the recurring document "
+            "requirement. Do not promise that the requirement will change."
+        ),
+        flags=ToolFlag.IGNORE_ON_ENTER,
+    )
+    async def record_requirement_change_request(
+        self,
+        ctx: RunContext,
+        reason: str,
+    ) -> str | None:
+        """Record a request to review the monthly requirement."""
+        self._require_access()
+        self._require_no_pending_result()
+        change_reason = _required_detail(reason, "reason")
+        self.record_preview(
+            ConversationDisposition.REQUIREMENT_CHANGE_REQUESTED,
+            reason=change_reason,
+        )
+        return await self._speak_required_result(
+            ctx,
+            "I've recorded your reason for the appropriate team to review. No "
+            "requirement has been changed. Do you need anything else?",
+        )
+
+    @function_tool(
+        name="record_existing_nudge_contact",
+        description=(
+            "Record the Nudge employee the client is already working with and the "
+            "client's latest status. Do not claim an existing case was updated."
+        ),
+        flags=ToolFlag.IGNORE_ON_ENTER,
+    )
+    async def record_existing_nudge_contact(
+        self,
+        ctx: RunContext,
+        nudge_contact_name: str,
+        status_update: str,
+    ) -> str | None:
+        """Record an existing human support relationship."""
+        self._require_access()
+        self._require_no_pending_result()
+        contact_name = _required_detail(nudge_contact_name, "nudge_contact_name")
+        latest_status = _required_detail(status_update, "status_update")
+        self.record_preview(
+            ConversationDisposition.EXISTING_NUDGE_CONTACT,
+            nudge_contact_name=contact_name,
+            status_update=latest_status,
+        )
+        return await self._speak_required_result(
+            ctx,
+            f"I've recorded that you're working with {contact_name} and that "
+            f"{latest_status}. I didn't update any existing case. Do you need "
+            "anything else?",
+        )
+
+    @function_tool(
+        name="request_human_transfer",
+        description=(
+            "Record that the client requested a human. Live transfer is disabled "
+            "in this demo, so this tool must never claim that a transfer occurred."
+        ),
+        flags=ToolFlag.IGNORE_ON_ENTER,
+    )
+    async def request_human_transfer(
+        self,
+        ctx: RunContext,
+        reason: str = "",
+    ) -> str | None:
+        """Exercise the disabled transfer branch and record the request."""
+        self._require_access()
+        self._require_no_pending_result()
+        self.record_preview(
+            ConversationDisposition.HUMAN_TRANSFER_REQUESTED,
+            reason=reason,
+        )
+        return await self._speak_required_result(
+            ctx,
+            "Live transfer is unavailable in this demo. You can call "
+            f"{NUDGE_SUPPORT_PHONE_SPOKEN} or email {NUDGE_SUPPORT_EMAIL}. "
+            "I've recorded your request for Client Service. Do you need anything else?",
+        )
+
+    @function_tool(
+        name="record_secure_link_request",
+        description=(
+            "Record that a file is too large and the client needs an approved secure "
+            "upload link. Do not invent or provide a link."
+        ),
+        flags=ToolFlag.IGNORE_ON_ENTER,
+    )
+    async def record_secure_link_request(self, ctx: RunContext) -> str | None:
+        """Record a large-file help request for Client Service."""
+        self._require_access()
+        self._require_no_pending_result()
+        self.record_preview(ConversationDisposition.SECURE_LINK_REQUESTED)
+        return await self._speak_required_result(
+            ctx,
+            "I've recorded a secure upload link request for Client Service. Client "
+            "Service must provide an approved link; no link was sent. Do you need "
+            "anything else?",
+        )
+
+    def _require_access(self) -> None:
+        if not self._access_granted:
+            raise ToolError(
+                "Access not verified. Do not say anything was recorded. Complete the "
+                "configured identity or authorization check first."
+            )
+
+    def _require_no_pending_result(self) -> None:
+        if self._pending_spoken_result is not None:
+            raise ToolError(
+                "A required caller-facing result is unfinished. Call "
+                "finish_interrupted_result before any other workflow tool."
+            )
+
+    async def _disable_verification_tool(
+        self,
+        ctx: RunContext,
+        tool_name: str,
+    ) -> None:
+        """Remove a completed access check from later model turns."""
+        self._tools = [tool for tool in self._tools if tool.id != tool_name]
+        if ctx is not None:
+            current_agent = ctx.session.current_agent
+            await current_agent.update_tools(current_agent.tools)
+
+    async def _speak_required_result(
+        self,
+        ctx: RunContext,
+        message: str,
+    ) -> str | None:
+        """Speak a required result and retain it until playout completes."""
+        if await _speak_tool_result(ctx, message):
+            self._pending_spoken_result = None
+            self._pending_end_call_result = None
+            return None
+        self._pending_spoken_result = message
+        self._pending_end_call_result = _without_optional_follow_up_question(message)
+        return (
+            "The required caller-facing result was interrupted. Call "
+            "finish_interrupted_result before any other response or tool."
+        )
+
+
+def build_follow_up_preview_tool(
+    record: CentralizedCallRecord,
+    request_id: str,
+    verification_mode: Literal["business_name", "authorized_listener"] = (
+        "business_name"
+    ),
+) -> FollowUpPreviewTool:
+    """Return a new per-call preview toolset."""
+    return FollowUpPreviewTool(record, request_id, verification_mode)
+
+
+def _required_detail(value: str, name: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ToolError(f"{name} must not be empty")
+    if len(normalized) > 500:
+        raise ToolError(f"{name} must be at most 500 characters")
+    return normalized
+
+
+def _required_extension_date(value: str) -> str:
+    """Reject missing-date placeholders without rewriting the caller's timing."""
+    normalized = _required_detail(value, "requested_submission_date")
+    key = " ".join(re.findall(r"[a-z0-9]+", normalized.casefold()))
+    if (
+        key
+        in {
+            "unknown",
+            "tbd",
+            "to be determined",
+            "to be decided",
+            "not provided",
+            "not specified",
+            "unspecified",
+            "none",
+            "null",
+            "n a",
+            "na",
+            "no date",
+            "no date provided",
+            "no date specified",
+            "not sure",
+            "more time",
+            "asap",
+            "later",
+            "soon",
+            "sometime",
+            "whenever",
+        }
+        or not key
+    ):
+        raise ToolError(
+            "requested_submission_date is missing or unspecified. Ask the caller "
+            "which date they need, wait for their answer, then retry with that "
+            "date. No extension request has been recorded."
+        )
+    return normalized
+
+
+def _business_key(value: str) -> str:
+    """Normalize ordinary legal-suffix and spacing variants for exact matching."""
+    words = re.findall(r"[a-z0-9]+", value.casefold())
+    suffixes = {
+        "co",
+        "company",
+        "corp",
+        "corporation",
+        "inc",
+        "incorporated",
+        "llc",
+    }
+    while words and words[-1] in suffixes:
+        words.pop()
+    return "".join(words)
+
+
+async def _speak_tool_result(ctx: RunContext, message: str) -> bool:
+    """Speak a grounded result and report whether its playout completed."""
+    await ctx.wait_for_playout()
+    speech = ctx.session.say(message, allow_interruptions=True)
+    await speech.wait_for_playout()
+    return not speech.interrupted
+
+
+def _without_optional_follow_up_question(message: str) -> str:
+    """Remove an optional follow-up question before a caller-requested shutdown."""
+    return message.removesuffix(" Do you need anything else?")

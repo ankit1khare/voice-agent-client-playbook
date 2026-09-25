@@ -1,0 +1,377 @@
+"""LiveKit worker entrypoint for the guarded Nudge outbound demo path."""
+
+import asyncio
+import logging
+import os
+
+from livekit import api
+from livekit.agents import (
+    AMD,
+    AgentServer,
+    AgentSession,
+    JobContext,
+    UserInputTranscribedEvent,
+)
+
+from nudge_voice_agent.outbound import (
+    OUTBOUND_AGENT_NAME,
+    AMDAction,
+    CallOutcome,
+    CallResult,
+    OutboundCallRequest,
+    ScreeningResolution,
+    amd_action_for_category,
+    build_sip_participant_request,
+    call_outcome_for_sip_status,
+    screening_resolution_for_transcript,
+)
+from nudge_voice_agent.outbound_assistant import (
+    OUTBOUND_DISCLOSURE,
+    NudgeOutboundDocumentCollectionAssistant,
+    voicemail_message,
+)
+from nudge_voice_agent.runtime import (
+    build_room_options,
+    create_agent_session,
+)
+from nudge_voice_agent.session_reporting import (
+    log_session_transcript,
+    register_follow_up_previews,
+)
+from nudge_voice_agent.settings import load_settings
+
+logger = logging.getLogger("nudge-outbound-demo")
+settings = load_settings()
+server = AgentServer()
+
+DIAL_TIMEOUT_SECONDS = 45.0
+PARTICIPANT_JOIN_TIMEOUT_SECONDS = 10.0
+SCREENING_HANDOFF_TIMEOUT_SECONDS = 45.0
+
+
+@server.rtc_session(
+    agent_name=os.getenv("NUDGE_OUTBOUND_AGENT_NAME", OUTBOUND_AGENT_NAME).strip(),
+    on_session_end=log_session_transcript,
+)
+async def nudge_outbound_document_collection_demo(ctx: JobContext) -> None:
+    """Place one explicitly authorized synthetic outbound call."""
+
+    async def delete_call_room() -> None:
+        await ctx.delete_room()
+
+    ctx.add_shutdown_callback(delete_call_room)
+
+    try:
+        call = OutboundCallRequest.from_metadata(ctx.job.metadata)
+    except ValueError as exc:
+        _log_result(
+            CallResult(
+                request_id="unknown",
+                outcome=CallOutcome.INVALID_REQUEST,
+                detail=str(exc),
+            )
+        )
+        ctx.shutdown("invalid outbound request")
+        return
+
+    trunk_id = os.getenv("NUDGE_OUTBOUND_TRUNK_ID", "").strip()
+    if not _outbound_calls_enabled() or trunk_id == "":
+        _log_result(
+            CallResult(
+                request_id=call.request_id,
+                outcome=CallOutcome.OUTBOUND_DISABLED,
+                detail="outbound calls are disabled or the Nudge trunk is missing",
+            )
+        )
+        ctx.shutdown("outbound calls disabled")
+        return
+
+    logger.info(
+        "starting authorized synthetic outbound call",
+        extra={
+            "request_id": call.request_id,
+            "destination": call.masked_phone_number,
+        },
+    )
+
+    session = create_agent_session(settings)
+    assistant = NudgeOutboundDocumentCollectionAssistant(
+        record=call.call_record,
+        request_id=call.request_id,
+    )
+    register_follow_up_previews(ctx.job.id, assistant.follow_up_tool.previews)
+    await session.start(
+        room=ctx.room,
+        agent=assistant,
+        room_options=build_room_options(),
+    )
+    if session.room_io is None:
+        _log_result(
+            CallResult(
+                request_id=call.request_id,
+                outcome=CallOutcome.DIAL_FAILED,
+                detail="session room I/O is unavailable",
+            )
+        )
+        ctx.shutdown("session room I/O unavailable")
+        return
+
+    session.room_io.set_participant(call.participant_identity)
+
+    async with AMD(
+        session,
+        participant_identity=call.participant_identity,
+        ivr_detection=False,
+    ) as detector:
+        try:
+            await ctx.api.sip.create_sip_participant(
+                build_sip_participant_request(
+                    call,
+                    room_name=ctx.room.name,
+                    trunk_id=trunk_id,
+                ),
+                timeout=DIAL_TIMEOUT_SECONDS,
+            )
+        except api.SipCallError as exc:
+            _log_result(
+                CallResult(
+                    request_id=call.request_id,
+                    outcome=call_outcome_for_sip_status(exc.sip_status_code),
+                    sip_status_code=exc.sip_status_code,
+                    detail=exc.sip_status,
+                )
+            )
+            ctx.shutdown("outbound dial failed")
+            return
+        except TimeoutError:
+            _log_result(
+                CallResult(
+                    request_id=call.request_id,
+                    outcome=CallOutcome.NO_ANSWER,
+                    detail="dial timed out",
+                )
+            )
+            ctx.shutdown("outbound dial timed out")
+            return
+
+        try:
+            await asyncio.wait_for(
+                ctx.wait_for_participant(identity=call.participant_identity),
+                timeout=PARTICIPANT_JOIN_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            _log_result(
+                CallResult(
+                    request_id=call.request_id,
+                    outcome=CallOutcome.PARTICIPANT_MISSING,
+                    detail="answered SIP participant did not join the room",
+                )
+            )
+            ctx.shutdown("SIP participant missing")
+            return
+
+        disclosure = session.say(OUTBOUND_DISCLOSURE, allow_interruptions=False)
+        detection = await detector.execute()
+        category = _amd_category_value(detection.category)
+        action = amd_action_for_category(
+            category,
+            allow_ivr_screening=_ivr_screening_enabled(),
+        )
+
+        if action is AMDAction.START_CONVERSATION:
+            await disclosure.wait_for_playout()
+            _log_result(
+                CallResult(
+                    request_id=call.request_id,
+                    outcome=CallOutcome.HUMAN_ANSWERED,
+                    amd_category=category,
+                )
+            )
+            return
+
+        await session.interrupt(force=True)
+
+        if action is AMDAction.LEAVE_VOICEMAIL:
+            message = session.say(
+                voicemail_message(call.call_record),
+                allow_interruptions=False,
+            )
+            await message.wait_for_playout()
+            _log_result(
+                CallResult(
+                    request_id=call.request_id,
+                    outcome=CallOutcome.VOICEMAIL_LEFT,
+                    amd_category=category,
+                )
+            )
+            ctx.shutdown("voicemail left")
+            return
+
+        if action is AMDAction.CONTINUE_IVR_SCREENING:
+            await _handle_ivr_screening(
+                ctx,
+                session,
+                call,
+            )
+            return
+        elif action is AMDAction.END_IVR:
+            _log_result(
+                CallResult(
+                    request_id=call.request_id,
+                    outcome=CallOutcome.IVR_DETECTED,
+                    amd_category=category,
+                )
+            )
+            ctx.shutdown("IVR detected")
+            return
+        else:
+            _log_result(
+                CallResult(
+                    request_id=call.request_id,
+                    outcome=CallOutcome.MAILBOX_UNAVAILABLE,
+                    amd_category=category,
+                )
+            )
+            ctx.shutdown("mailbox unavailable")
+            return
+
+
+async def _handle_ivr_screening(
+    ctx: JobContext,
+    session: AgentSession,
+    call: OutboundCallRequest,
+) -> bool:
+    """Wait for call screening to connect a human or hand off to voicemail."""
+    transcripts: asyncio.Queue[str] = asyncio.Queue()
+
+    def capture_transcript(event: UserInputTranscribedEvent) -> None:
+        if event.is_final and event.transcript.strip():
+            transcripts.put_nowait(event.transcript)
+
+    session.on("user_input_transcribed", capture_transcript)
+    try:
+        screening_message = session.say(
+            OUTBOUND_DISCLOSURE,
+            allow_interruptions=False,
+        )
+        await screening_message.wait_for_playout()
+        _log_result(
+            CallResult(
+                request_id=call.request_id,
+                outcome=CallOutcome.IVR_SCREENING_CONTINUED,
+                amd_category="machine-ivr",
+            )
+        )
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + SCREENING_HANDOFF_TIMEOUT_SECONDS
+        while True:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                resolution = ScreeningResolution.WAIT
+                break
+            try:
+                transcript = await asyncio.wait_for(
+                    transcripts.get(),
+                    timeout=remaining,
+                )
+            except TimeoutError:
+                resolution = ScreeningResolution.WAIT
+                break
+
+            resolution = screening_resolution_for_transcript(transcript)
+            logger.info(
+                "phone screening transition",
+                extra={
+                    "request_id": call.request_id,
+                    "screening_resolution": resolution.value,
+                },
+            )
+            if resolution is not ScreeningResolution.WAIT:
+                break
+
+        if resolution is ScreeningResolution.HUMAN:
+            human_disclosure = session.say(
+                OUTBOUND_DISCLOSURE,
+                allow_interruptions=False,
+            )
+            await human_disclosure.wait_for_playout()
+            _log_result(
+                CallResult(
+                    request_id=call.request_id,
+                    outcome=CallOutcome.HUMAN_ANSWERED,
+                    amd_category="human-after-ivr",
+                    detail="phone screening connected the authorized destination",
+                )
+            )
+            return True
+
+        await session.interrupt(force=True)
+        if resolution is ScreeningResolution.VOICEMAIL:
+            message = session.say(
+                voicemail_message(call.call_record),
+                allow_interruptions=False,
+            )
+            await message.wait_for_playout()
+            _log_result(
+                CallResult(
+                    request_id=call.request_id,
+                    outcome=CallOutcome.VOICEMAIL_LEFT,
+                    amd_category="machine-vm-after-ivr",
+                    detail="phone screening handed the call to voicemail",
+                )
+            )
+            ctx.shutdown("voicemail left after IVR screening")
+            return False
+
+        if resolution is ScreeningResolution.UNAVAILABLE:
+            _log_result(
+                CallResult(
+                    request_id=call.request_id,
+                    outcome=CallOutcome.MAILBOX_UNAVAILABLE,
+                    amd_category="machine-unavailable-after-ivr",
+                )
+            )
+            ctx.shutdown("mailbox unavailable after IVR screening")
+            return False
+
+        _log_result(
+            CallResult(
+                request_id=call.request_id,
+                outcome=CallOutcome.IVR_DETECTED,
+                amd_category="machine-ivr",
+                detail="phone screening did not resolve before timeout",
+            )
+        )
+        ctx.shutdown("phone screening timed out")
+        return False
+    finally:
+        session.off("user_input_transcribed", capture_transcript)
+
+
+def _outbound_calls_enabled() -> bool:
+    return os.getenv("NUDGE_ENABLE_OUTBOUND_CALLS", "false").strip().lower() == "true"
+
+
+def _ivr_screening_enabled() -> bool:
+    return os.getenv("NUDGE_ALLOW_IVR_SCREENING", "false").strip().lower() == "true"
+
+
+def _amd_category_value(category: object) -> str:
+    value = getattr(category, "value", category)
+    return str(value)
+
+
+def _log_result(result: CallResult) -> None:
+    logger.info("outbound_call_result", extra={"call_result": result.to_log_record()})
+
+
+def main() -> None:
+    """Run the guarded outbound LiveKit agent server."""
+    from livekit import agents
+
+    agents.cli.run_app(server)
+
+
+if __name__ == "__main__":
+    main()

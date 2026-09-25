@@ -1,0 +1,267 @@
+"""Validated requests and outcomes for the Nudge outbound demo path."""
+
+import json
+import re
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any
+
+from livekit import api
+
+from nudge_voice_agent.demo_context import (
+    DEMO_CALL_RECORD,
+    NUDGE_SUPPORT_PHONE_E164,
+    CentralizedCallRecord,
+)
+
+OUTBOUND_AGENT_NAME = "nudge-demo"
+OUTBOUND_JOB_MODE = "nudge_outbound_test"
+
+_E164_PATTERN = re.compile(r"^\+[1-9][0-9]{7,14}$")
+_REQUEST_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,47}$")
+
+
+class CallOutcome(str, Enum):
+    """Canonical terminal or handoff outcomes for an outbound attempt."""
+
+    OUTBOUND_DISABLED = "outbound_disabled"
+    INVALID_REQUEST = "invalid_request"
+    HUMAN_ANSWERED = "human_answered"
+    VOICEMAIL_LEFT = "voicemail_left"
+    IVR_SCREENING_CONTINUED = "ivr_screening_continued"
+    IVR_DETECTED = "ivr_detected"
+    MAILBOX_UNAVAILABLE = "mailbox_unavailable"
+    BUSY_OR_REJECTED = "busy_or_rejected"
+    NO_ANSWER = "no_answer"
+    DIAL_FAILED = "dial_failed"
+    PARTICIPANT_MISSING = "participant_missing"
+
+
+class AMDAction(str, Enum):
+    """Action selected from a LiveKit AMD category."""
+
+    START_CONVERSATION = "start_conversation"
+    LEAVE_VOICEMAIL = "leave_voicemail"
+    CONTINUE_IVR_SCREENING = "continue_ivr_screening"
+    END_IVR = "end_ivr"
+    END_UNAVAILABLE = "end_unavailable"
+
+
+class ScreeningResolution(str, Enum):
+    """Resolution observed after a phone-screening service answers first."""
+
+    WAIT = "wait"
+    HUMAN = "human"
+    VOICEMAIL = "voicemail"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True, slots=True)
+class OutboundCallRequest:
+    """A single authorized call to synthetic demo data."""
+
+    phone_number: str
+    request_id: str
+    demo_only: bool
+    authorized_test_call: bool
+    call_record: CentralizedCallRecord = DEMO_CALL_RECORD
+
+    @classmethod
+    def from_metadata(cls, raw_metadata: str) -> "OutboundCallRequest":
+        """Parse and validate LiveKit job metadata."""
+        try:
+            payload = json.loads(raw_metadata)
+        except json.JSONDecodeError as exc:
+            raise ValueError("job metadata must be valid JSON") from exc
+
+        if not isinstance(payload, dict):
+            raise ValueError("job metadata must be a JSON object")
+        if payload.get("mode") != OUTBOUND_JOB_MODE:
+            raise ValueError(f"mode must be {OUTBOUND_JOB_MODE}")
+
+        request = cls(
+            phone_number=_required_string(payload, "phone_number"),
+            request_id=_required_string(payload, "request_id"),
+            demo_only=payload.get("demo_only") is True,
+            authorized_test_call=payload.get("authorized_test_call") is True,
+            call_record=CentralizedCallRecord.from_dict(
+                payload.get("call_record", DEMO_CALL_RECORD.to_dict())
+            ),
+        )
+        request.validate()
+        return request
+
+    def validate(self) -> None:
+        """Reject unsafe or malformed dial requests."""
+        self.validate_structure()
+        if not self.demo_only:
+            raise ValueError("only synthetic demo calls are enabled")
+        if not self.authorized_test_call:
+            raise ValueError("authorized_test_call must be true")
+
+    def validate_structure(self) -> None:
+        """Validate identifiers without treating a preview as authorization."""
+        if not _E164_PATTERN.fullmatch(self.phone_number):
+            raise ValueError("phone_number must use E.164 format")
+        if self.phone_number == NUDGE_SUPPORT_PHONE_E164:
+            raise ValueError(
+                "Nudge Client Service cannot be used as an outbound test destination"
+            )
+        if not _REQUEST_ID_PATTERN.fullmatch(self.request_id):
+            raise ValueError(
+                "request_id must contain lowercase letters, digits, or dashes"
+            )
+
+    @property
+    def participant_identity(self) -> str:
+        """Return a stable identity that does not expose the destination number."""
+        return f"nudge-outbound-{self.request_id}"
+
+    @property
+    def masked_phone_number(self) -> str:
+        """Return a log-safe form of the destination number."""
+        return f"+********{self.phone_number[-4:]}"
+
+    def to_metadata(self) -> str:
+        """Serialize the request for an explicit LiveKit dispatch."""
+        payload = {
+            "mode": OUTBOUND_JOB_MODE,
+            "phone_number": self.phone_number,
+            "request_id": self.request_id,
+            "demo_only": self.demo_only,
+            "authorized_test_call": self.authorized_test_call,
+            "call_record": self.call_record.to_dict(),
+        }
+        return json.dumps(payload, separators=(",", ":"), sort_keys=True)
+
+
+def is_outbound_job_metadata(raw_metadata: str) -> bool:
+    """Return whether job metadata explicitly selects the outbound path."""
+    try:
+        payload = json.loads(raw_metadata)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(payload, dict) and payload.get("mode") == OUTBOUND_JOB_MODE
+
+
+@dataclass(frozen=True, slots=True)
+class CallResult:
+    """Structured, log-safe result for one outbound attempt."""
+
+    request_id: str
+    outcome: CallOutcome
+    amd_category: str | None = None
+    sip_status_code: int | None = None
+    detail: str | None = None
+
+    def to_log_record(self) -> dict[str, str | int | None]:
+        """Return a structured record suitable for cloud logs."""
+        return {
+            "request_id": self.request_id,
+            "outcome": self.outcome.value,
+            "amd_category": self.amd_category,
+            "sip_status_code": self.sip_status_code,
+            "detail": self.detail,
+        }
+
+
+def build_sip_participant_request(
+    request: OutboundCallRequest,
+    *,
+    room_name: str,
+    trunk_id: str,
+) -> api.CreateSIPParticipantRequest:
+    """Build the stored-trunk dial request expected by LiveKit."""
+    if trunk_id.strip() == "":
+        raise ValueError("a dedicated Nudge outbound trunk ID is required")
+    if room_name.strip() == "":
+        raise ValueError("room_name is required")
+
+    return api.CreateSIPParticipantRequest(
+        room_name=room_name,
+        sip_trunk_id=trunk_id,
+        sip_call_to=request.phone_number,
+        participant_identity=request.participant_identity,
+        participant_name="Nudge document contact",
+        hide_phone_number=True,
+        krisp_enabled=True,
+        wait_until_answered=True,
+    )
+
+
+def call_outcome_for_sip_status(status_code: int | None) -> CallOutcome:
+    """Map documented SIP dial failures to Nudge call outcomes."""
+    if status_code in {486, 603}:
+        return CallOutcome.BUSY_OR_REJECTED
+    if status_code in {408, 480}:
+        return CallOutcome.NO_ANSWER
+    return CallOutcome.DIAL_FAILED
+
+
+def amd_action_for_category(
+    category: str,
+    *,
+    allow_ivr_screening: bool = False,
+) -> AMDAction:
+    """Map a LiveKit AMD category to the next outbound action."""
+    if category in {"human", "uncertain"}:
+        return AMDAction.START_CONVERSATION
+    if category == "machine-vm":
+        return AMDAction.LEAVE_VOICEMAIL
+    if category == "machine-ivr":
+        if allow_ivr_screening:
+            return AMDAction.CONTINUE_IVR_SCREENING
+        return AMDAction.END_IVR
+    if category == "machine-unavailable":
+        return AMDAction.END_UNAVAILABLE
+    raise ValueError(f"unsupported AMD category: {category}")
+
+
+def screening_resolution_for_transcript(transcript: str) -> ScreeningResolution:
+    """Classify audio heard after Nudge answers a phone-screening prompt."""
+    normalized = " ".join(transcript.casefold().split()).strip(" .,!?:;")
+
+    cannot_leave_message = (
+        "mailbox is full",
+        "mailbox has not been set up",
+        "mailbox hasn't been set up",
+        "cannot accept messages",
+        "can't accept messages",
+        "unable to take your message",
+    )
+    if any(phrase in normalized for phrase in cannot_leave_message):
+        return ScreeningResolution.UNAVAILABLE
+
+    voicemail_invitation = (
+        "after the tone",
+        "after the beep",
+        "leave a message",
+        "leave an additional message",
+        "record your message",
+    )
+    if any(phrase in normalized for phrase in voicemail_invitation):
+        return ScreeningResolution.VOICEMAIL
+
+    screening_prompts = (
+        "please stay on the line",
+        "please hold",
+        "stay on the line",
+        "state your name",
+        "record your name",
+        "reason for calling",
+        "check if the person is available",
+        "checking if the person is available",
+    )
+    if normalized in {"thanks", "thank you"} or any(
+        phrase in normalized for phrase in screening_prompts
+    ):
+        return ScreeningResolution.WAIT
+
+    return ScreeningResolution.HUMAN
+
+
+def _required_string(payload: dict[str, Any], key: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str) or value.strip() == "":
+        raise ValueError(f"{key} must be a non-empty string")
+    return value.strip()
