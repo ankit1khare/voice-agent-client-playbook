@@ -1,7 +1,7 @@
-# Voice agent client playbook
+# Voice agent playbook
 
 Build and deploy **Nudge**, a Python voice agent for document follow-up with
-LiveKit and Rime Coda. This is the code from the Rime tutorial and video.
+LiveKit and Rime. This is the code from the Rime tutorial and video.
 
 Nudge uses Deepgram Flux for speech recognition, Gemini 3.1 Flash Lite for
 conversation and tool selection, and Rime's Wawona voice through the Coda
